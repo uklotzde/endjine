@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: The endjine authors
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "endjine"
+description = "Accessing the Engine DJ library database."
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.87"
+license = "MPL-2.0"
+readme = "README.md"
+repository = "https://github.com/uklotzde/gigtag"
+keywords = ["engine", "dj", "database"]
+categories = ["database"]
+include = ["README.md", "LICENSES/", "src/"]
+
+[dependencies]
+futures-core = "0.3.31"
+futures-util = "0.3.31"
+log = "0.4.27"
+image = "0.25.6"
+sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
+time = "0.3.41"
+tokio = { version = "1.45.1", features = ["rt-multi-thread"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+
+[dev-dependencies]
+anyhow = "1.0.98"
+colored = "3.0.0"
+env_logger = "0.11.8"
+sqlx = { version = "0.8.6", features = ["runtime-tokio"] }
+tokio = { version = "1.45.1", features = ["full"] }
+
+[lints.rust]
+future_incompatible = "warn"
+let_underscore = "warn"
+missing_debug_implementations = "warn"
+rust_2018_idioms = "warn"
+rust_2021_compatibility = "warn"
+rust_2024_compatibility = "warn"
+unreachable_pub = "warn"
+unsafe_code = "warn"
+unused = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+clone_on_ref_ptr = "warn"
+missing_const_for_fn = "warn"
+mod_named_module_files = "warn"
+
+# Errors should be self-documenting.
+missing_errors_doc = "allow"

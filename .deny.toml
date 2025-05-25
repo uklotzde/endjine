@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: The endjine authors
+# SPDX-License-Identifier: CC0-1.0
+
+[graph]
+all-features = true
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+
+[licenses]
+allow = ["Apache-2.0", "MIT", "MPL-2.0", "Unicode-3.0"]
+
+[bans]
+multiple-versions = "allow"
+highlight = "all"
