@@ -14,21 +14,34 @@ const JPEG_QUALITY: u8 = 70;
 
 const MAX_RATIO: f64 = 0.75;
 
+#[derive(Debug)]
+struct BatchUpdateItem {
+    id: i64,
+    format: ImageFormat,
+    ratio: f64,
+    image_data: Vec<u8>,
+}
+
 #[expect(clippy::too_many_lines, reason = "TODO")]
 pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
     let mut outcome = BatchOutcome::default();
     // All ids in the database are strictly positive.
     let mut last_id = -1;
-    let mut batch_update: Vec<(i64, ImageFormat, f64, Vec<u8>)> =
-        Vec::with_capacity(BATCH_UPDATE_SIZE.into());
+    let mut batch_update_items: Vec<BatchUpdateItem> = Vec::with_capacity(BATCH_UPDATE_SIZE.into());
     loop {
-        if !batch_update.is_empty() {
+        if !batch_update_items.is_empty() {
             log::debug!(
                 "Updating {batch_size} album art image(s)",
-                batch_size = batch_update.len()
+                batch_size = batch_update_items.len()
             );
-            for (id, format, ratio, image_data) in &batch_update {
-                match update_album_art_image(pool, *id, image_data).await {
+            for BatchUpdateItem {
+                id,
+                format,
+                ratio,
+                image_data,
+            } in batch_update_items.drain(..)
+            {
+                match update_album_art_image(pool, id, image_data).await {
                     Ok(result) => {
                         debug_assert_eq!(result.rows_affected(), 1);
                     }
@@ -45,7 +58,7 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
                 );
                 outcome.succeeded += 1;
             }
-            batch_update.clear();
+            debug_assert!(batch_update_items.is_empty());
         }
         let mut rows = sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id>?1 ORDER BY id")
             .bind(last_id)
@@ -112,21 +125,26 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
             // We replace the image data but leave the original hash as is. This ensures
             // that Engine DJ will reuse album art when adding tracks with the same
             // image.
-            let mut album_art_jpeg = Vec::with_capacity(256_000);
-            let encoder = JpegEncoder::new_with_quality(&mut album_art_jpeg, JPEG_QUALITY);
+            let mut image_data_jpeg = Vec::with_capacity(256_000);
+            let encoder = JpegEncoder::new_with_quality(&mut image_data_jpeg, JPEG_QUALITY);
             if let Err(err) = block_in_place(|| image.write_with_encoder(encoder)) {
                 log::warn!("Failed to re-encode album art {id} as JPEG: {err}");
                 outcome.failed.push(Box::new(err));
                 continue;
             }
-            let new_size = album_art_jpeg.len();
+            let new_size = image_data_jpeg.len();
             if new_size < old_size && new_size > 0 {
                 #[expect(clippy::cast_precision_loss)]
                 let ratio = new_size as f64 / old_size as f64;
                 if ratio <= MAX_RATIO {
-                    debug_assert!(batch_update.len() < BATCH_UPDATE_SIZE.into());
-                    batch_update.push((id, format, ratio, album_art_jpeg));
-                    if batch_update.len() >= BATCH_UPDATE_SIZE.into() {
+                    debug_assert!(batch_update_items.len() < BATCH_UPDATE_SIZE.into());
+                    batch_update_items.push(BatchUpdateItem {
+                        id,
+                        format,
+                        ratio,
+                        image_data: image_data_jpeg,
+                    });
+                    if batch_update_items.len() >= BATCH_UPDATE_SIZE.into() {
                         // Abort scanning and update the album art collected during the current batch.
                         break;
                     }
@@ -139,7 +157,7 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
         if row_fetch_count > 0 {
             continue;
         }
-        debug_assert!(batch_update.is_empty());
+        debug_assert!(batch_update_items.is_empty());
         return outcome;
     }
 }
