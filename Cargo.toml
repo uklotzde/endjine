@@ -50,7 +50,7 @@ unused = "warn"
 pedantic = { level = "warn", priority = -1 }
 clone_on_ref_ptr = "warn"
 missing_const_for_fn = "warn"
-mod_named_module_files = "warn"
+mod_module_files = "warn"
 
 # Errors should be self-documenting.
 missing_errors_doc = "allow"
