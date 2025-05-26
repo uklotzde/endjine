@@ -6,6 +6,19 @@
 
 use sqlx::SqlitePool;
 
+mod album_art;
+pub use self::album_art::{
+    AlbumArt, delete_orphaned_album_art, fetch_album_art, try_load_album_art,
+    update_album_art_image,
+};
+
+mod information;
+pub use self::information::{
+    Information, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, fetch_information,
+    try_load_information,
+};
+
+// TODO: Extract remaining entities into submodules.
 mod models;
 pub use self::models::*;
 
@@ -13,14 +26,6 @@ pub use self::models::*;
 mod batch;
 #[cfg(feature = "batch")]
 pub use self::batch::{BatchOutcome, shrink_album_art};
-
-pub async fn delete_orphaned_album_art(pool: &SqlitePool) -> sqlx::Result<u64> {
-    let result =
-        sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
-            .execute(pool)
-            .await?;
-    Ok(result.rows_affected())
-}
 
 pub async fn optimize_database(pool: &SqlitePool) -> sqlx::Result<()> {
     sqlx::query(r"VACUUM").execute(pool).await?;

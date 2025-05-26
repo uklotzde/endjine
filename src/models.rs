@@ -5,29 +5,6 @@ use sqlx::FromRow;
 use time::UtcDateTime;
 use uuid::Uuid;
 
-pub const SCHEMA_VERSION_MAJOR: u32 = 3;
-pub const SCHEMA_VERSION_MINOR: u32 = 0;
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct Information {
-    pub id: i64,
-    pub uuid: Uuid,
-    pub schema_version_major: i64,
-    pub schema_version_minor: i64,
-    pub schema_version_patch: i64,
-    pub current_played_indicator: Option<i64>,
-    pub last_rekord_box_library_import_read_counter: Option<i64>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct AlbumArt {
-    pub id: i64,
-    pub hash: Option<String>,
-    pub album_art: Option<Vec<u8>>,
-}
-
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Pack {

@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::io::Cursor;
-
 use futures_util::StreamExt;
-use image::{DynamicImage, ImageFormat, ImageReader, codecs::jpeg::JpegEncoder};
+use image::{ImageFormat, codecs::jpeg::JpegEncoder};
 use sqlx::SqlitePool;
 use tokio::task::block_in_place;
 
-use crate::{AlbumArt, BatchOutcome};
+use crate::{AlbumArt, BatchOutcome, update_album_art_image};
 
 const BATCH_UPDATE_SIZE: u16 = 128;
 
@@ -19,6 +17,7 @@ const MAX_RATIO: f64 = 0.75;
 #[expect(clippy::too_many_lines, reason = "TODO")]
 pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
     let mut outcome = BatchOutcome::default();
+    // All ids in the database are strictly positive.
     let mut last_id = -1;
     let mut batch_update: Vec<(i64, ImageFormat, f64, Vec<u8>)> =
         Vec::with_capacity(BATCH_UPDATE_SIZE.into());
@@ -28,13 +27,8 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
                 "Updating {batch_size} album art image(s)",
                 batch_size = batch_update.len()
             );
-            for (id, format, ratio, album_art) in &batch_update {
-                match sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")
-                    .bind(id)
-                    .bind(album_art)
-                    .execute(pool)
-                    .await
-                {
+            for (id, format, ratio, image_data) in &batch_update {
+                match update_album_art_image(pool, *id, image_data).await {
                     Ok(result) => {
                         debug_assert_eq!(result.rows_affected(), 1);
                     }
@@ -61,48 +55,51 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
             row_fetch_count += 1;
             let (id, format, image, old_size) = match row {
                 Ok(row) => {
-                    let AlbumArt {
-                        id,
-                        hash,
-                        album_art,
-                    } = &row;
-                    let id = *id;
+                    let album_art: AlbumArt = row;
+                    let id = album_art.id();
                     debug_assert!(id > last_id);
                     last_id = id;
-                    let Some(album_art) = album_art else {
-                        log::debug!("Skipping missing album art {id}");
-                        debug_assert!(hash.is_none());
-                        outcome.skipped += 1;
-                        continue;
-                    };
-                    debug_assert!(hash.is_some());
-                    let (format, image) = match block_in_place(|| decode_image(album_art)) {
-                        Ok(ok) => ok,
+                    match block_in_place(|| album_art.decode_image()) {
+                        Ok((_, None)) => {
+                            log::debug!("Skipping missing album art {id}");
+                            debug_assert!(album_art.hash().is_none());
+                            outcome.skipped += 1;
+                            continue;
+                        }
+                        Ok((None, _)) => {
+                            log::info!("Skipping album art {id} with unknown image format");
+                            debug_assert!(album_art.hash().is_some());
+                            outcome.skipped += 1;
+                            continue;
+                        }
+                        Ok((Some(format), Some(image))) => {
+                            debug_assert!(album_art.hash().is_some());
+                            match format {
+                                format @ (ImageFormat::Png
+                                | ImageFormat::Bmp
+                                | ImageFormat::Tga) => (
+                                    id,
+                                    format,
+                                    image,
+                                    album_art.image_data().map_or(0, <[u8]>::len),
+                                ),
+                                ImageFormat::Jpeg => {
+                                    log::debug!("Skipping album art {id} with JPEG image format");
+                                    outcome.skipped += 1;
+                                    continue;
+                                }
+                                unsupported_format => {
+                                    log::info!(
+                                        "Skipping album art {id} with unsupported image format {unsupported_format:?}"
+                                    );
+                                    outcome.skipped += 1;
+                                    continue;
+                                }
+                            }
+                        }
                         Err(err) => {
                             log::warn!("Failed to decode image data of album art {id}: {err}");
                             outcome.failed.push(Box::new(err));
-                            continue;
-                        }
-                    };
-                    match format {
-                        None => {
-                            log::info!("Skipping album art {id} with unknown image format");
-                            outcome.skipped += 1;
-                            continue;
-                        }
-                        Some(format @ (ImageFormat::Png | ImageFormat::Bmp | ImageFormat::Tga)) => {
-                            (id, format, image, album_art.len())
-                        }
-                        Some(ImageFormat::Jpeg) => {
-                            log::debug!("Skipping album art {id} with JPEG image format");
-                            outcome.skipped += 1;
-                            continue;
-                        }
-                        Some(unsupported_format) => {
-                            log::info!(
-                                "Skipping album art {id} with unsupported image format {unsupported_format:?}"
-                            );
-                            outcome.skipped += 1;
                             continue;
                         }
                     }
@@ -145,12 +142,4 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
         debug_assert!(batch_update.is_empty());
         return outcome;
     }
-}
-
-fn decode_image(
-    bytes: impl AsRef<[u8]>,
-) -> image::ImageResult<(Option<ImageFormat>, DynamicImage)> {
-    let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
-    let image_format = reader.format();
-    reader.decode().map(|image| (image_format, image))
 }
