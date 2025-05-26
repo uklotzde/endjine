@@ -53,9 +53,8 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
             }
             batch_update.clear();
         }
-        let mut rows = sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id>?1 ORDER BY id LIMIT ?2")
+        let mut rows = sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id>?1 ORDER BY id")
             .bind(last_id)
-            .bind(i64::from(BATCH_UPDATE_SIZE))
             .fetch(pool);
         let mut row_fetch_count = 0;
         while let Some(row) = rows.next().await {
@@ -130,6 +129,10 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
                 if ratio <= MAX_RATIO {
                     debug_assert!(batch_update.len() < BATCH_UPDATE_SIZE.into());
                     batch_update.push((id, format, ratio, album_art_jpeg));
+                    if batch_update.len() >= BATCH_UPDATE_SIZE.into() {
+                        // Abort scanning and update the album art collected during the current batch.
+                        break;
+                    }
                     continue;
                 }
             }
@@ -139,6 +142,7 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
         if row_fetch_count > 0 {
             continue;
         }
+        debug_assert!(batch_update.is_empty());
         return outcome;
     }
 }
