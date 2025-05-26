@@ -9,7 +9,9 @@ use sqlx::SqlitePool;
 mod models;
 pub use self::models::*;
 
+#[cfg(feature = "batch")]
 mod batch;
+#[cfg(feature = "batch")]
 pub use self::batch::{BatchOutcome, shrink_album_art};
 
 pub async fn delete_orphaned_album_art(pool: &SqlitePool) -> sqlx::Result<u64> {

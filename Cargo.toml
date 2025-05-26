@@ -15,14 +15,18 @@ categories = ["database"]
 include = ["README.md", "LICENSES/", "src/"]
 
 [dependencies]
-futures-core = "0.3.31"
-futures-util = "0.3.31"
-log = "0.4.27"
-image = "0.25.6"
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 time = "0.3.41"
-tokio = { version = "1.45.1", features = ["rt-multi-thread"] }
 uuid = { version = "1.17.0", features = ["v4"] }
+
+futures-util = { version = "0.3.31", optional = true }
+image = { version = "0.25.6", optional = true }
+log = { version = "0.4.27", optional = true }
+tokio = { version = "1.45.1", optional = true, features = ["rt-multi-thread"] }
+
+[features]
+default = ["batch"]
+batch = ["dep:futures-util", "dep:image", "dep:log", "dep:tokio"]
 
 [dev-dependencies]
 anyhow = "1.0.98"
