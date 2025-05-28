@@ -14,6 +14,9 @@ keywords = ["engine", "dj", "database"]
 categories = ["database"]
 include = ["README.md", "LICENSES/", "src/"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 image = "0.25.6"
 serde = { version = "1.0.219", features = ["derive"] }
