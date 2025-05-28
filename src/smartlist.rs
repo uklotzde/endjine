@@ -26,14 +26,14 @@ pub fn smartlist_fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Smar
     sqlx::query_as(r"SELECT * FROM Smartlist").fetch(pool)
 }
 
-/// Loads a single information by id.
+/// Loads a single [`Smartlist`]s by UUID.
 ///
-/// Returns `Ok(None)` if the requested information has not been found.
+/// Returns `Ok(None)` if the requested [`Smartlist`]s has not been found.
 pub async fn smartlist_try_load(
     pool: &SqlitePool,
     list_uuid: &Uuid,
 ) -> sqlx::Result<Option<Smartlist>> {
-    sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
+    sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
         .bind(list_uuid)
         .fetch_optional(pool)
         .await
