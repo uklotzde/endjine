@@ -4,9 +4,13 @@
 use std::borrow::Cow;
 
 use anyhow::Result;
+use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
-use endjine::{BatchOutcome, delete_orphaned_album_art, optimize_database, shrink_album_art};
+use endjine::{
+    BatchOutcome, album_art_delete_orphaned, optimize_database, shrink_album_art,
+    smartlist_fetch_all,
+};
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
 
@@ -30,8 +34,13 @@ async fn main() -> Result<()> {
 
     log::info!("Opened database: {database_path}");
 
+    log::info!("Scanning Smartlists...");
+    // Try to load all Smartlists from the database to verify the schema definition.
+    let smartlist_count = smartlist_fetch_all(&pool).count().await;
+    log::info!("Found {smartlist_count} Smartlist(s)");
+
     log::info!("Deleting orphaned album art...");
-    match delete_orphaned_album_art(&pool).await {
+    match album_art_delete_orphaned(&pool).await {
         Ok(rows_affected) => {
             if rows_affected > 0 {
                 log::info!("Deleted {rows_affected} row(s) of orphaned album art");

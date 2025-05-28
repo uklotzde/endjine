@@ -6,7 +6,7 @@ use image::{ImageFormat, codecs::jpeg::JpegEncoder};
 use sqlx::SqlitePool;
 use tokio::task::block_in_place;
 
-use crate::{AlbumArt, AlbumArtId, BatchOutcome, update_album_art_image};
+use crate::{AlbumArt, AlbumArtId, BatchOutcome, album_art_update_image};
 
 const BATCH_UPDATE_SIZE: u16 = 128;
 
@@ -41,7 +41,7 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
                 image_data,
             } in batch_update_items.drain(..)
             {
-                match update_album_art_image(pool, id, image_data).await {
+                match album_art_update_image(pool, id, image_data).await {
                     Ok(result) => {
                         debug_assert_eq!(result.rows_affected(), 1);
                     }

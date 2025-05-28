@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use futures_util::stream::BoxStream;
 use image::{DynamicImage, ImageFormat, ImageReader, ImageResult};
-use sqlx::{SqlitePool, prelude::FromRow, sqlite::SqliteQueryResult};
+use sqlx::{FromRow, SqlitePool, sqlite::SqliteQueryResult};
 
 crate::db_id!(AlbumArtId);
 
@@ -70,21 +70,25 @@ fn decode_image(image_data: &[u8]) -> ImageResult<(Option<ImageFormat>, DynamicI
 /// Fetches all album art asynchronously.
 ///
 /// Unfiltered and in no particular order.
-pub async fn fetch_album_art(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<AlbumArt>> {
+#[must_use]
+pub fn album_art_fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<AlbumArt>> {
     sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(pool)
 }
 
 /// Loads a single album art by id.
 ///
 /// Returns `Ok(None)` if the requested album art has not been found.
-pub async fn try_load_album_art(pool: &SqlitePool, id: i64) -> sqlx::Result<Option<AlbumArt>> {
+pub async fn album_art_try_load(
+    pool: &SqlitePool,
+    id: AlbumArtId,
+) -> sqlx::Result<Option<AlbumArt>> {
     sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
         .bind(id)
         .fetch_optional(pool)
         .await
 }
 
-pub async fn update_album_art_image(
+pub async fn album_art_update_image(
     pool: &SqlitePool,
     id: AlbumArtId,
     image_data: impl AsRef<[u8]>,
@@ -96,7 +100,7 @@ pub async fn update_album_art_image(
         .await
 }
 
-pub async fn delete_orphaned_album_art(pool: &SqlitePool) -> sqlx::Result<u64> {
+pub async fn album_art_delete_orphaned(pool: &SqlitePool) -> sqlx::Result<u64> {
     let result =
         sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
             .execute(pool)

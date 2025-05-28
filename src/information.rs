@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{SqlitePool, prelude::FromRow};
+use sqlx::{FromRow, SqlitePool};
 use uuid::Uuid;
 
 /// Latest schema major version.
@@ -92,14 +92,18 @@ impl Information {
 /// Fetches all information asynchronously.
 ///
 /// Unfiltered and in no particular order.
-pub async fn fetch_information(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Information>> {
+#[must_use]
+pub fn information_fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Information>> {
     sqlx::query_as(r"SELECT * FROM Information").fetch(pool)
 }
 
 /// Loads a single information by id.
 ///
 /// Returns `Ok(None)` if the requested information has not been found.
-pub async fn try_load_information(pool: &SqlitePool, id: i64) -> sqlx::Result<Option<Information>> {
+pub async fn information_try_load(
+    pool: &SqlitePool,
+    id: InformationId,
+) -> sqlx::Result<Option<Information>> {
     sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
         .bind(id)
         .fetch_optional(pool)

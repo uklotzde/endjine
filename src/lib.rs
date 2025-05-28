@@ -6,8 +6,8 @@
 
 mod album_art;
 pub use self::album_art::{
-    AlbumArt, AlbumArtId, delete_orphaned_album_art, fetch_album_art, try_load_album_art,
-    update_album_art_image,
+    AlbumArt, AlbumArtId, album_art_delete_orphaned, album_art_fetch_all, album_art_try_load,
+    album_art_update_image,
 };
 
 mod db_id;
@@ -17,8 +17,8 @@ pub use self::changelog::{ChangeLog, ChangeLogId};
 
 mod information;
 pub use self::information::{
-    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, fetch_information,
-    try_load_information,
+    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, information_fetch_all,
+    information_try_load,
 };
 
 mod pack;
@@ -37,7 +37,7 @@ mod preparelist;
 pub use self::preparelist::{PreparelistEntity, PreparelistEntityId};
 
 mod smartlist;
-pub use self::smartlist::Smartlist;
+pub use self::smartlist::{Smartlist, smartlist_fetch_all, smartlist_try_load};
 
 mod track;
 pub use self::track::{Track, TrackId};

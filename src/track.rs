@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use sqlx::FromRow;
-use time::UtcDateTime;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 crate::db_id!(TrackId);
@@ -36,12 +36,12 @@ pub struct Track {
     pub key: Option<i64>,
     pub rating: Option<i64>,
     pub album_art: Option<String>,
-    pub time_last_played: Option<UtcDateTime>,
+    pub time_last_played: Option<OffsetDateTime>,
     pub is_played: bool,
     pub file_type: Option<String>,
     pub is_analyzed: bool,
-    pub date_created: Option<UtcDateTime>,
-    pub date_added: Option<UtcDateTime>,
+    pub date_created: Option<OffsetDateTime>,
+    pub date_added: Option<OffsetDateTime>,
     pub is_available: bool,
     pub is_metadata_of_packed_track_changed: bool,
     pub is_performance_data_of_packed_track_changed: bool,
@@ -55,5 +55,5 @@ pub struct Track {
     pub origin_track_id: Option<i64>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
-    pub last_edit_time: UtcDateTime,
+    pub last_edit_time: OffsetDateTime,
 }

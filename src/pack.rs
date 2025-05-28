@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use sqlx::FromRow;
-use time::UtcDateTime;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::ChangeLogId;
@@ -16,5 +16,5 @@ pub struct Pack {
     pub pack_id: Uuid,
     pub change_log_database_uuid: Uuid,
     pub change_log_id: ChangeLogId,
-    pub last_pack_time: UtcDateTime,
+    pub last_pack_time: OffsetDateTime,
 }
