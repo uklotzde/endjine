@@ -3,10 +3,14 @@
 
 use sqlx::FromRow;
 
+use crate::TrackId;
+
+crate::db_id!(PerformanceDataId);
+
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct PerformanceData {
-    pub track_id: i64,
+    pub track_id: TrackId,
     pub track_data: Option<Vec<u8>>,
     pub overview_wave_form_data: Option<Vec<u8>>,
     pub beat_data: Option<Vec<u8>>,

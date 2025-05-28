@@ -7,10 +7,12 @@ use futures_util::stream::BoxStream;
 use image::{DynamicImage, ImageFormat, ImageReader, ImageResult};
 use sqlx::{SqlitePool, prelude::FromRow, sqlite::SqliteQueryResult};
 
+crate::db_id!(AlbumArtId);
+
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct AlbumArt {
-    id: i64,
+    id: AlbumArtId,
     hash: Option<String>,
     #[sqlx(rename = "albumArt")]
     image_data: Option<Vec<u8>>,
@@ -18,7 +20,7 @@ pub struct AlbumArt {
 
 impl AlbumArt {
     #[must_use]
-    pub const fn id(&self) -> i64 {
+    pub const fn id(&self) -> AlbumArtId {
         self.id
     }
 
@@ -84,7 +86,7 @@ pub async fn try_load_album_art(pool: &SqlitePool, id: i64) -> sqlx::Result<Opti
 
 pub async fn update_album_art_image(
     pool: &SqlitePool,
-    id: i64,
+    id: AlbumArtId,
     image_data: impl AsRef<[u8]>,
 ) -> sqlx::Result<SqliteQueryResult> {
     sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")

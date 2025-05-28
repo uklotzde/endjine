@@ -6,7 +6,7 @@ use image::{ImageFormat, codecs::jpeg::JpegEncoder};
 use sqlx::SqlitePool;
 use tokio::task::block_in_place;
 
-use crate::{AlbumArt, BatchOutcome, update_album_art_image};
+use crate::{AlbumArt, AlbumArtId, BatchOutcome, update_album_art_image};
 
 const BATCH_UPDATE_SIZE: u16 = 128;
 
@@ -16,7 +16,7 @@ const MAX_RATIO: f64 = 0.75;
 
 #[derive(Debug)]
 struct BatchUpdateItem {
-    id: i64,
+    id: AlbumArtId,
     format: ImageFormat,
     ratio: f64,
     image_data: Vec<u8>,
@@ -26,7 +26,7 @@ struct BatchUpdateItem {
 pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
     let mut outcome = BatchOutcome::default();
     // All ids in the database are strictly positive.
-    let mut last_id = -1;
+    let mut last_id = AlbumArtId::INVALID_MIN_EXCLUSIVE;
     let mut batch_update_items: Vec<BatchUpdateItem> = Vec::with_capacity(BATCH_UPDATE_SIZE.into());
     loop {
         if !batch_update_items.is_empty() {

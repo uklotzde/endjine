@@ -5,6 +5,8 @@ use sqlx::FromRow;
 use time::UtcDateTime;
 use uuid::Uuid;
 
+crate::db_id!(TrackId);
+
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 #[expect(

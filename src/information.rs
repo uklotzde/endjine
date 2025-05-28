@@ -34,11 +34,13 @@ impl SchemaVersion {
     }
 }
 
+crate::db_id!(InformationId);
+
 /// Database information.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Information {
-    id: i64,
+    id: InformationId,
     uuid: Uuid,
     schema_version_major: i64,
     schema_version_minor: i64,
@@ -51,7 +53,7 @@ pub struct Information {
 
 impl Information {
     #[must_use]
-    pub const fn id(&self) -> i64 {
+    pub const fn id(&self) -> InformationId {
         self.id
     }
 

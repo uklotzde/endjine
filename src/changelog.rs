@@ -3,9 +3,13 @@
 
 use sqlx::FromRow;
 
+use crate::TrackId;
+
+crate::db_id!(ChangeLogId);
+
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct ChangeLog {
-    pub id: i64,
-    pub track_id: i64,
+    pub id: ChangeLogId,
+    pub track_id: TrackId,
 }
