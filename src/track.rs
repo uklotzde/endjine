@@ -7,16 +7,6 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct Pack {
-    pub id: i64,
-    pub pack_id: Option<Uuid>,
-    pub change_log_database_uuid: Option<Uuid>,
-    pub change_log_id: Option<i64>,
-    pub last_pack_time: Option<UtcDateTime>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "Reverse-engineered from database schema."
@@ -63,61 +53,5 @@ pub struct Track {
     pub origin_track_id: Option<i64>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
-    pub last_edit_time: UtcDateTime,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct PerformanceData {
-    pub track_id: i64,
-    pub track_data: Option<Vec<u8>>,
-    pub overview_wave_form_data: Option<Vec<u8>>,
-    pub beat_data: Option<Vec<u8>>,
-    pub quick_cues: Option<Vec<u8>>,
-    pub loops: Option<Vec<u8>>,
-    pub third_party_source_id: Option<i64>,
-    pub active_on_load_loops: Option<i64>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct Playlist {
-    pub id: i64,
-    pub title: String,
-    pub parent_list_id: Option<i64>,
-    pub is_persisted: bool,
-    pub next_list_id: Option<i64>,
-    pub last_edit_time: UtcDateTime,
-    pub is_explicitly_exported: bool,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct PlaylistEntity {
-    pub id: i64,
-    pub list_id: i64,
-    pub track_id: i64,
-    pub database_uuid: Option<Uuid>,
-    pub next_entity_id: Option<i64>,
-    pub membership_reference: Option<i64>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct PreparelistEntity {
-    pub id: i64,
-    pub track_id: i64,
-    pub track_number: Option<i64>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct Smartlist {
-    pub list_uuid: Uuid,
-    pub title: String,
-    pub parent_playlist_path: Option<String>,
-    pub next_playlist_path: Option<String>,
-    pub next_list_uuid: Option<Uuid>,
-    pub rules: String,
     pub last_edit_time: UtcDateTime,
 }
