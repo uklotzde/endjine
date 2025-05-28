@@ -10,9 +10,9 @@ use uuid::Uuid;
 pub struct Playlist {
     pub id: i64,
     pub title: String,
-    pub parent_list_id: Option<i64>,
+    pub parent_list_id: i64,
     pub is_persisted: bool,
-    pub next_list_id: Option<i64>,
+    pub next_list_id: i64,
     pub last_edit_time: UtcDateTime,
     pub is_explicitly_exported: bool,
 }
@@ -23,9 +23,9 @@ pub struct PlaylistEntity {
     pub id: i64,
     pub list_id: i64,
     pub track_id: i64,
-    pub database_uuid: Option<Uuid>,
-    pub next_entity_id: Option<i64>,
-    pub membership_reference: Option<i64>,
+    pub database_uuid: Uuid,
+    pub next_entity_id: i64,
+    pub membership_reference: i64,
 }
 
 #[derive(Debug, Clone, FromRow)]
