@@ -54,6 +54,44 @@ impl AlbumArt {
         let (image_format, image) = decode_image(image_data)?;
         Ok((image_format, Some(image)))
     }
+
+    /// Fetches all album art asynchronously.
+    ///
+    /// Unfiltered and in no particular order.
+    #[must_use]
+    pub fn fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<AlbumArt>> {
+        sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(pool)
+    }
+
+    /// Loads a single album art by id.
+    ///
+    /// Returns `Ok(None)` if the requested album art has not been found.
+    pub async fn try_load(pool: &SqlitePool, id: AlbumArtId) -> sqlx::Result<Option<AlbumArt>> {
+        sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+    }
+
+    pub async fn update_image(
+        pool: &SqlitePool,
+        id: AlbumArtId,
+        image_data: impl AsRef<[u8]>,
+    ) -> sqlx::Result<SqliteQueryResult> {
+        sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")
+            .bind(id)
+            .bind(image_data.as_ref())
+            .execute(pool)
+            .await
+    }
+
+    pub async fn delete_unused(pool: &SqlitePool) -> sqlx::Result<u64> {
+        let result =
+            sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
+                .execute(pool)
+                .await?;
+        Ok(result.rows_affected())
+    }
 }
 
 fn guess_image_format(image_data: &[u8]) -> ImageResult<Option<ImageFormat>> {
@@ -65,45 +103,4 @@ fn decode_image(image_data: &[u8]) -> ImageResult<(Option<ImageFormat>, DynamicI
     let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format()?;
     let image_format = reader.format();
     reader.decode().map(|image| (image_format, image))
-}
-
-/// Fetches all album art asynchronously.
-///
-/// Unfiltered and in no particular order.
-#[must_use]
-pub fn album_art_fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<AlbumArt>> {
-    sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(pool)
-}
-
-/// Loads a single album art by id.
-///
-/// Returns `Ok(None)` if the requested album art has not been found.
-pub async fn album_art_try_load(
-    pool: &SqlitePool,
-    id: AlbumArtId,
-) -> sqlx::Result<Option<AlbumArt>> {
-    sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await
-}
-
-pub async fn album_art_update_image(
-    pool: &SqlitePool,
-    id: AlbumArtId,
-    image_data: impl AsRef<[u8]>,
-) -> sqlx::Result<SqliteQueryResult> {
-    sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")
-        .bind(id)
-        .bind(image_data.as_ref())
-        .execute(pool)
-        .await
-}
-
-pub async fn album_art_delete_unused(pool: &SqlitePool) -> sqlx::Result<u64> {
-    let result =
-        sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
-            .execute(pool)
-            .await?;
-    Ok(result.rows_affected())
 }

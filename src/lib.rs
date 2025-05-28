@@ -5,10 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 mod album_art;
-pub use self::album_art::{
-    AlbumArt, AlbumArtId, album_art_delete_unused, album_art_fetch_all, album_art_try_load,
-    album_art_update_image,
-};
+pub use self::album_art::{AlbumArt, AlbumArtId};
 
 mod db_id;
 
@@ -20,8 +17,7 @@ pub use self::changelog::{ChangeLog, ChangeLogId};
 
 mod information;
 pub use self::information::{
-    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, information_fetch_all,
-    information_try_load,
+    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR,
 };
 
 mod pack;
@@ -39,16 +35,16 @@ pub use self::playlist::{
 mod preparelist;
 pub use self::preparelist::{PreparelistEntity, PreparelistEntityId};
 
-mod smartlist;
-pub use self::smartlist::{Smartlist, smartlist_fetch_all, smartlist_try_load};
+pub mod smartlist;
+pub use self::smartlist::Smartlist;
 
 mod track;
 pub use self::track::{Track, TrackId};
 
 #[cfg(feature = "batch")]
-mod batch;
+pub mod batch;
 #[cfg(feature = "batch")]
-pub use self::batch::{BatchOutcome, shrink_album_art};
+pub use self::batch::BatchOutcome;
 
 mod util;
 pub use self::util::optimize_database;

@@ -16,6 +16,7 @@ include = ["README.md", "LICENSES/", "src/"]
 
 [dependencies]
 image = "0.25.6"
+serde = { version = "1.0.219", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 
 futures-util = { version = "0.3.31", optional = true }

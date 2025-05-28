@@ -88,27 +88,27 @@ impl Information {
             patch,
         }
     }
-}
 
-/// Fetches all information asynchronously.
-///
-/// Unfiltered and in no particular order.
-#[must_use]
-pub fn information_fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Information>> {
-    sqlx::query_as(r"SELECT * FROM Information").fetch(pool)
-}
+    /// Fetches all information asynchronously.
+    ///
+    /// Unfiltered and in no particular order.
+    #[must_use]
+    pub fn fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Information>> {
+        sqlx::query_as(r"SELECT * FROM Information").fetch(pool)
+    }
 
-/// Loads a single information by id.
-///
-/// Returns `Ok(None)` if the requested information has not been found.
-pub async fn information_try_load(
-    pool: &SqlitePool,
-    id: InformationId,
-) -> sqlx::Result<Option<Information>> {
-    sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+    /// Loads a single information by id.
+    ///
+    /// Returns `Ok(None)` if the requested information has not been found.
+    pub async fn try_load(
+        pool: &SqlitePool,
+        id: InformationId,
+    ) -> sqlx::Result<Option<Information>> {
+        sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+    }
 }
 
 #[cfg(test)]

@@ -7,9 +7,7 @@ use anyhow::Result;
 use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
-use endjine::{
-    BatchOutcome, album_art_delete_unused, optimize_database, shrink_album_art, smartlist_fetch_all,
-};
+use endjine::{AlbumArt, BatchOutcome, Smartlist, batch, optimize_database};
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
 
@@ -35,7 +33,7 @@ async fn main() -> Result<()> {
 
     log::info!("Scanning Smartlists...");
     // Try to load all Smartlists from the database to verify the schema definition.
-    let (smartlist_ok_count, smartlist_err_count) = smartlist_fetch_all(&pool)
+    let (smartlist_ok_count, smartlist_err_count) = Smartlist::fetch_all(&pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
@@ -55,7 +53,7 @@ async fn main() -> Result<()> {
     }
 
     log::info!("Deleting unused AlbumArt...");
-    match album_art_delete_unused(&pool).await {
+    match AlbumArt::delete_unused(&pool).await {
         Ok(rows_affected) => {
             if rows_affected > 0 {
                 log::info!("Deleted {rows_affected} row(s) of unused AlbumArt");
@@ -75,7 +73,7 @@ async fn main() -> Result<()> {
             skipped,
             failed,
             aborted_error,
-        } = shrink_album_art(&pool).await;
+        } = batch::shrink_album_art(&pool).await;
         log::info!(
             "Shrinking of AlbumArt images finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
             failed = failed.len()
