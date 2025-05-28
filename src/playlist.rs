@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use sqlx::FromRow;
-use time::OffsetDateTime;
-use uuid::Uuid;
+use sqlx::{
+    FromRow,
+    types::{Uuid, time::OffsetDateTime},
+};
 
 use crate::TrackId;
 

@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{FromRow, SqlitePool};
-use uuid::Uuid;
+use sqlx::{FromRow, SqlitePool, types::Uuid};
 
 /// Latest schema major version.
 ///

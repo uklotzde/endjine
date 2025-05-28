@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{FromRow, SqlitePool};
-use time::OffsetDateTime;
-use uuid::Uuid;
+use sqlx::{
+    FromRow, SqlitePool,
+    types::{JsonValue, Uuid, time::OffsetDateTime},
+};
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
@@ -13,8 +14,9 @@ pub struct Smartlist {
     pub title: String,
     pub parent_playlist_path: String,
     pub next_playlist_path: String,
-    pub next_list_uuid: Option<Uuid>,
-    pub rules: serde_json::Value,
+    pub next_list_uuid: Uuid,
+    #[sqlx(json)]
+    pub rules: JsonValue,
     pub last_edit_time: OffsetDateTime,
 }
 
