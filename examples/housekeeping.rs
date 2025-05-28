@@ -36,8 +36,24 @@ async fn main() -> Result<()> {
 
     log::info!("Scanning Smartlists...");
     // Try to load all Smartlists from the database to verify the schema definition.
-    let smartlist_count = smartlist_fetch_all(&pool).count().await;
-    log::info!("Found {smartlist_count} Smartlist(s)");
+    let (smartlist_ok_count, smartlist_err_count) = smartlist_fetch_all(&pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to load smartlist: {err}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let smartlist_count = smartlist_ok_count + smartlist_err_count;
+    if smartlist_err_count > 0 {
+        log::warn!("Found {smartlist_count} Smartlist(s): {smartlist_err_count} unreadable");
+    } else {
+        log::info!("Found {smartlist_count} Smartlist(s)");
+    }
 
     log::info!("Deleting orphaned album art...");
     match album_art_delete_orphaned(&pool).await {
