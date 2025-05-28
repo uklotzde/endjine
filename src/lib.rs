@@ -12,6 +12,9 @@ pub use self::album_art::{
 
 mod db_id;
 
+mod db_uuid;
+pub use self::db_uuid::DbUuid;
+
 mod changelog;
 pub use self::changelog::{ChangeLog, ChangeLogId};
 

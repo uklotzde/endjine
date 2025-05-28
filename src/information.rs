@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{
-    FromRow, SqlitePool,
-    types::{Uuid, uuid::fmt::Hyphenated},
-};
+use sqlx::{FromRow, SqlitePool, types::Uuid};
+
+use crate::DbUuid;
 
 /// Latest schema major version.
 ///
@@ -43,7 +42,7 @@ crate::db_id!(InformationId);
 #[sqlx(rename_all = "camelCase")]
 pub struct Information {
     id: InformationId,
-    uuid: Hyphenated,
+    uuid: DbUuid,
     schema_version_major: i64,
     schema_version_minor: i64,
     schema_version_patch: i64,

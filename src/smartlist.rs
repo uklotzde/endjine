@@ -4,17 +4,19 @@
 use futures_util::stream::BoxStream;
 use sqlx::{
     FromRow, SqlitePool,
-    types::{JsonValue, Uuid, time::OffsetDateTime, uuid::fmt::Hyphenated},
+    types::{JsonValue, Uuid, time::OffsetDateTime},
 };
+
+use crate::DbUuid;
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Smartlist {
-    pub list_uuid: Hyphenated,
+    pub list_uuid: DbUuid,
     pub title: String,
     pub parent_playlist_path: String,
     pub next_playlist_path: String,
-    pub next_list_uuid: Hyphenated,
+    pub next_list_uuid: DbUuid,
     #[sqlx(json)]
     pub rules: JsonValue,
     pub last_edit_time: OffsetDateTime,

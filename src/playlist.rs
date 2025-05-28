@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use sqlx::{
-    FromRow,
-    types::{time::OffsetDateTime, uuid::fmt::Hyphenated},
-};
+use sqlx::{FromRow, types::time::OffsetDateTime};
 
-use crate::TrackId;
+use crate::{DbUuid, TrackId};
 
 crate::db_id!(PlaylistId);
 
@@ -30,7 +27,7 @@ pub struct PlaylistEntity {
     pub id: PlaylistEntityId,
     pub list_id: PlaylistId,
     pub track_id: TrackId,
-    pub database_uuid: Hyphenated,
+    pub database_uuid: DbUuid,
     pub next_entity_id: PlaylistEntityId,
     pub membership_reference: i64,
 }

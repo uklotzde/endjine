@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use sqlx::{
-    FromRow,
-    types::{time::OffsetDateTime, uuid::fmt::Hyphenated},
-};
+use sqlx::{FromRow, types::time::OffsetDateTime};
+
+use crate::DbUuid;
 
 crate::db_id!(TrackId);
 
@@ -52,7 +51,7 @@ pub struct Track {
     pub streaming_source: Option<String>,
     pub uri: Option<String>,
     pub is_beat_grid_locked: bool,
-    pub origin_database_uuid: Option<Hyphenated>,
+    pub origin_database_uuid: Option<DbUuid>,
     pub origin_track_id: Option<i64>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
