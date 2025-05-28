@@ -23,6 +23,9 @@ A Rust crate for accessing the [Engine DJ](https://enginedj.com/) library databa
 6. `just setup`
 7. `just`
 
+If you plan to contribute then fork this repo on GitHub and add your fork as a remote named
+`origin`.
+
 ## Examples
 
 See the `examples/` directory for more usage examples.
