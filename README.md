@@ -11,6 +11,18 @@
 
 A Rust crate for accessing the [Engine DJ](https://enginedj.com/) library database.
 
+## Development
+
+### Getting Started
+
+1. [Install Rust](https://www.rust-lang.org/tools/install)
+2. Install Python as a prerequisite for [pre-commit](https://pre-commit.com/)
+3. `cargo install just`
+4. `git clone --origin upstream git@github.com:uklotzde/endjine.git`
+5. `cd endjine`
+6. `just setup`
+7. `just`
+
 ## Examples
 
 See the `examples/` directory for more usage examples.
