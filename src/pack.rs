@@ -3,7 +3,7 @@
 
 use sqlx::{
     FromRow,
-    types::{Uuid, time::OffsetDateTime},
+    types::{time::OffsetDateTime, uuid::fmt::Hyphenated},
 };
 
 use crate::ChangeLogId;
@@ -14,8 +14,8 @@ crate::db_id!(PackId);
 #[sqlx(rename_all = "camelCase")]
 pub struct Pack {
     pub id: PackId,
-    pub pack_id: Uuid,
-    pub change_log_database_uuid: Uuid,
+    pub pack_id: Hyphenated,
+    pub change_log_database_uuid: Hyphenated,
     pub change_log_id: ChangeLogId,
     pub last_pack_time: OffsetDateTime,
 }

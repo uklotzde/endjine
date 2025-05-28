@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
                 Err(err) => {
-                    log::warn!("Failed to load smartlist: {err}");
+                    log::warn!("Failed to fetch Smartlist: {err:#}");
                     (ok_count, err_count + 1)
                 }
             };

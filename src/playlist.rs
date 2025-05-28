@@ -3,7 +3,7 @@
 
 use sqlx::{
     FromRow,
-    types::{Uuid, time::OffsetDateTime},
+    types::{time::OffsetDateTime, uuid::fmt::Hyphenated},
 };
 
 use crate::TrackId;
@@ -30,7 +30,7 @@ pub struct PlaylistEntity {
     pub id: PlaylistEntityId,
     pub list_id: PlaylistId,
     pub track_id: TrackId,
-    pub database_uuid: Uuid,
+    pub database_uuid: Hyphenated,
     pub next_entity_id: PlaylistEntityId,
     pub membership_reference: i64,
 }

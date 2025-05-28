@@ -4,17 +4,17 @@
 use futures_util::stream::BoxStream;
 use sqlx::{
     FromRow, SqlitePool,
-    types::{JsonValue, Uuid, time::OffsetDateTime},
+    types::{JsonValue, Uuid, time::OffsetDateTime, uuid::fmt::Hyphenated},
 };
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Smartlist {
-    pub list_uuid: Uuid,
+    pub list_uuid: Hyphenated,
     pub title: String,
     pub parent_playlist_path: String,
     pub next_playlist_path: String,
-    pub next_list_uuid: Uuid,
+    pub next_list_uuid: Hyphenated,
     #[sqlx(json)]
     pub rules: JsonValue,
     pub last_edit_time: OffsetDateTime,
@@ -36,7 +36,7 @@ pub async fn smartlist_try_load(
     list_uuid: &Uuid,
 ) -> sqlx::Result<Option<Smartlist>> {
     sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
-        .bind(list_uuid)
+        .bind(list_uuid.as_hyphenated())
         .fetch_optional(pool)
         .await
 }

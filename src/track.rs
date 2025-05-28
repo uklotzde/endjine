@@ -3,7 +3,7 @@
 
 use sqlx::{
     FromRow,
-    types::{Uuid, time::OffsetDateTime},
+    types::{time::OffsetDateTime, uuid::fmt::Hyphenated},
 };
 
 crate::db_id!(TrackId);
@@ -15,7 +15,7 @@ crate::db_id!(TrackId);
     reason = "Reverse-engineered from database schema."
 )]
 pub struct Track {
-    pub id: i64,
+    pub id: TrackId,
     pub play_order: Option<i64>,
     pub length: Option<i64>,
     pub bpm: Option<i64>,
@@ -52,7 +52,7 @@ pub struct Track {
     pub streaming_source: Option<String>,
     pub uri: Option<String>,
     pub is_beat_grid_locked: bool,
-    pub origin_database_uuid: Option<Uuid>,
+    pub origin_database_uuid: Option<Hyphenated>,
     pub origin_track_id: Option<i64>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
