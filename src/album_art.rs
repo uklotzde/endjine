@@ -100,7 +100,7 @@ pub async fn album_art_update_image(
         .await
 }
 
-pub async fn album_art_delete_orphaned(pool: &SqlitePool) -> sqlx::Result<u64> {
+pub async fn album_art_delete_unused(pool: &SqlitePool) -> sqlx::Result<u64> {
     let result =
         sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
             .execute(pool)

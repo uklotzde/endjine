@@ -6,7 +6,7 @@
 
 mod album_art;
 pub use self::album_art::{
-    AlbumArt, AlbumArtId, album_art_delete_orphaned, album_art_fetch_all, album_art_try_load,
+    AlbumArt, AlbumArtId, album_art_delete_unused, album_art_fetch_all, album_art_try_load,
     album_art_update_image,
 };
 

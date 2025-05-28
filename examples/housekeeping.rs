@@ -8,8 +8,7 @@ use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
 use endjine::{
-    BatchOutcome, album_art_delete_orphaned, optimize_database, shrink_album_art,
-    smartlist_fetch_all,
+    BatchOutcome, album_art_delete_unused, optimize_database, shrink_album_art, smartlist_fetch_all,
 };
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
@@ -55,21 +54,21 @@ async fn main() -> Result<()> {
         log::info!("Found {smartlist_count} Smartlist(s)");
     }
 
-    log::info!("Deleting orphaned album art...");
-    match album_art_delete_orphaned(&pool).await {
+    log::info!("Deleting unused AlbumArt...");
+    match album_art_delete_unused(&pool).await {
         Ok(rows_affected) => {
             if rows_affected > 0 {
-                log::info!("Deleted {rows_affected} row(s) of orphaned album art");
+                log::info!("Deleted {rows_affected} row(s) of unused AlbumArt");
             } else {
-                log::info!("No orphaned album art found");
+                log::info!("No unused AlbumArt found");
             }
         }
         Err(err) => {
-            log::warn!("Failed to delete orphaned album art: {err}");
+            log::warn!("Failed to delete unused AlbumArt: {err}");
         }
     }
 
-    log::info!("Shrinking album art...");
+    log::info!("Shrinking AlbumArt images...");
     {
         let BatchOutcome {
             succeeded,
@@ -78,11 +77,11 @@ async fn main() -> Result<()> {
             aborted_error,
         } = shrink_album_art(&pool).await;
         log::info!(
-            "Shrinking of album art finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
+            "Shrinking of AlbumArt images finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
             failed = failed.len()
         );
         if let Some(err) = aborted_error {
-            log::warn!("Shrinking of album art aborted with error: {err}");
+            log::warn!("Shrinking of AlbumArt images aborted with error: {err}");
         }
     }
 
