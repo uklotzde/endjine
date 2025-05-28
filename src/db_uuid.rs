@@ -19,6 +19,11 @@ impl DbUuid {
     }
 
     #[must_use]
+    pub const fn is_nil(&self) -> bool {
+        self.0.as_uuid().is_nil()
+    }
+
+    #[must_use]
     pub const fn as_uuid(&self) -> &Uuid {
         self.0.as_uuid()
     }
@@ -38,7 +43,7 @@ impl<'r> Decode<'r, Sqlite> for DbUuid {
     fn decode(value: SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let value = <Cow<'r, str> as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
         if value.is_empty() {
-            // Decode empty string as nil.
+            // Special case: Decode empty string as nil.
             return Ok(Self::nil());
         }
         let uuid = Uuid::from_str(&value)?;
@@ -51,8 +56,8 @@ impl<'q> Encode<'q, Sqlite> for DbUuid {
         &self,
         buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-        if *self == Self::nil() {
-            // Encode nil as empty string.
+        if self.is_nil() {
+            // Special case: Encode nil as empty string.
             return <String as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(&String::new(), buf);
         }
         <Hyphenated as Encode<Sqlite>>::encode_by_ref(&self.0, buf)
