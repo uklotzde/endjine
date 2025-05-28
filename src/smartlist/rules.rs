@@ -4,20 +4,19 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[expect(clippy::struct_field_names)]
 pub struct Rules {
     #[serde(rename = "match")]
-    r#match: RulesMatch,
-    rules: Vec<RulesItem>,
-    rv: u32,
+    pub r#match: RulesMatch,
+    pub rules: Vec<RulesItem>,
+    pub rv: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RulesItem {
-    col: String,
-    con: String,
-    param: String,
-    v: String,
+    pub col: String,
+    pub con: String,
+    pub param: String,
+    pub v: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
