@@ -11,7 +11,7 @@
 #[macro_export]
 macro_rules! db_id {
     ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
         #[repr(transparent)]
         pub struct $name(i64);
 
@@ -81,12 +81,18 @@ macro_rules! db_id {
 
 #[cfg(test)]
 mod tests {
+    db_id!(TestId);
+
     #[test]
     fn is_valid() {
-        db_id!(TestId);
         assert!(!TestId::INVALID_MIN_EXCLUSIVE.is_valid());
         assert!(!TestId::INVALID_ZERO.is_valid());
         assert!(!TestId(TestId::INVALID_ZERO.0 - 1).is_valid());
         assert!(TestId(TestId::INVALID_ZERO.0 + 1).is_valid());
+    }
+
+    #[test]
+    fn default_is_invalid_zero() {
+        assert_eq!(TestId::default(), TestId::INVALID_ZERO);
     }
 }

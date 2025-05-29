@@ -9,7 +9,7 @@ use sqlx::{
     types::{Uuid, uuid::fmt::Hyphenated},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DbUuid(Hyphenated);
 
 impl DbUuid {
@@ -61,5 +61,16 @@ impl<'q> Encode<'q, Sqlite> for DbUuid {
             return <String as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(&String::new(), buf);
         }
         <Hyphenated as Encode<Sqlite>>::encode_by_ref(&self.0, buf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::DbUuid;
+
+    #[test]
+    fn default_is_nil() {
+        assert!(DbUuid::default().is_nil());
+        assert_eq!(DbUuid::default(), DbUuid::nil());
     }
 }
