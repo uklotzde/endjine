@@ -27,17 +27,17 @@ impl Smartlist {
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<Smartlist>> {
+    ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(r"SELECT * FROM Smartlist").fetch(executor)
     }
 
-    /// Loads a single [`Smartlist`]s by UUID.
+    /// Loads a single [`Smartlist`] by UUID.
     ///
-    /// Returns `Ok(None)` if the requested [`Smartlist`]s has not been found.
+    /// Returns `Ok(None)` if the requested [`Smartlist`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
         list_uuid: &SmartlistUuid,
-    ) -> sqlx::Result<Option<Smartlist>> {
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
             .bind(list_uuid)
             .fetch_optional(executor)

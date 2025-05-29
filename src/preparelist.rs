@@ -7,6 +7,9 @@ use crate::TrackId;
 
 crate::db_id!(PreparelistEntityId);
 
+/// Item in the _Preparelist_.
+///
+/// The terminology used in the schema is confusing.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct PreparelistEntity {

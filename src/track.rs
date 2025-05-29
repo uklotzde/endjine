@@ -68,17 +68,17 @@ impl Track {
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<Track>> {
+    ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(r"SELECT * FROM Track").fetch(executor)
     }
 
-    /// Loads a single [`Track`]s by ID.
+    /// Loads a single [`Track`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`Track`]s has not been found.
+    /// Returns `Ok(None)` if the requested [`Track`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
         id: TrackId,
-    ) -> sqlx::Result<Option<Track>> {
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM Track WHERE id=?1")
             .bind(id)
             .fetch_optional(executor)

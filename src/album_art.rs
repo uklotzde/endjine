@@ -55,23 +55,23 @@ impl AlbumArt {
         Ok((image_format, Some(image)))
     }
 
-    /// Fetches all album art asynchronously.
+    /// Fetches all [`AlbumArt`] asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<AlbumArt>> {
+    ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(executor)
     }
 
-    /// Loads a single album art by id.
+    /// Loads a single [`AlbumArt`] by id.
     ///
-    /// Returns `Ok(None)` if the requested album art has not been found.
+    /// Returns `Ok(None)` if the requested [`AlbumArt`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
         id: AlbumArtId,
-    ) -> sqlx::Result<Option<AlbumArt>> {
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
             .bind(id)
             .fetch_optional(executor)

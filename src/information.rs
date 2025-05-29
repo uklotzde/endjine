@@ -89,23 +89,23 @@ impl Information {
         }
     }
 
-    /// Fetches all information asynchronously.
+    /// Fetches all [`Information`] asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<Information>> {
+    ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(r"SELECT * FROM Information").fetch(executor)
     }
 
-    /// Loads a single information by id.
+    /// Loads a single [`Information`] by id.
     ///
-    /// Returns `Ok(None)` if the requested information has not been found.
+    /// Returns `Ok(None)` if the requested [`Information`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
         id: InformationId,
-    ) -> sqlx::Result<Option<Information>> {
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
             .bind(id)
             .fetch_optional(executor)

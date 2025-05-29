@@ -22,23 +22,23 @@ pub struct PerformanceData {
 }
 
 impl PerformanceData {
-    /// Fetches all [`PerformanceData`]s asynchronously.
+    /// Fetches all [`PerformanceData`] asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<PerformanceData>> {
+    ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(r"SELECT * FROM PerformanceData").fetch(executor)
     }
 
-    /// Loads a single [`PerformanceData`]s by ID.
+    /// Loads a single [`PerformanceData`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`PerformanceData`]s has not been found.
+    /// Returns `Ok(None)` if the requested [`PerformanceData`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
         id: PerformanceDataId,
-    ) -> sqlx::Result<Option<PerformanceData>> {
+    ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM PerformanceData WHERE id=?1")
             .bind(id)
             .fetch_optional(executor)
