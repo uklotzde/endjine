@@ -110,7 +110,7 @@ async fn scan_playlists(pool: &SqlitePool) {
 async fn scan_playlist_entities(pool: &SqlitePool) {
     log::info!("Scanning PlaylistEntity...");
     // Try to load all Playlists from the database to verify the schema definition.
-    let (ok_count, err_count) = Playlist::fetch_all(pool)
+    let (ok_count, err_count) = PlaylistEntity::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
