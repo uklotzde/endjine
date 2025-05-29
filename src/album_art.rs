@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use futures_util::stream::BoxStream;
 use image::{DynamicImage, ImageFormat, ImageReader, ImageResult};
-use sqlx::{FromRow, SqlitePool, sqlite::SqliteQueryResult};
+use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult};
 
 crate::db_id!(AlbumArtId);
 
@@ -59,36 +59,41 @@ impl AlbumArt {
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
-    pub fn fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<AlbumArt>> {
-        sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(pool)
+    pub fn fetch_all<'a>(
+        executor: impl SqliteExecutor<'a> + 'a,
+    ) -> BoxStream<'a, sqlx::Result<AlbumArt>> {
+        sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(executor)
     }
 
     /// Loads a single album art by id.
     ///
     /// Returns `Ok(None)` if the requested album art has not been found.
-    pub async fn try_load(pool: &SqlitePool, id: AlbumArtId) -> sqlx::Result<Option<AlbumArt>> {
+    pub async fn try_load(
+        executor: impl SqliteExecutor<'_>,
+        id: AlbumArtId,
+    ) -> sqlx::Result<Option<AlbumArt>> {
         sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(executor)
             .await
     }
 
     pub async fn update_image(
-        pool: &SqlitePool,
+        executor: impl SqliteExecutor<'_>,
         id: AlbumArtId,
         image_data: impl AsRef<[u8]>,
     ) -> sqlx::Result<SqliteQueryResult> {
         sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")
             .bind(id)
             .bind(image_data.as_ref())
-            .execute(pool)
+            .execute(executor)
             .await
     }
 
-    pub async fn delete_unused(pool: &SqlitePool) -> sqlx::Result<u64> {
+    pub async fn delete_unused(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
         let result =
             sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
-                .execute(pool)
+                .execute(executor)
                 .await?;
         Ok(result.rows_affected())
     }

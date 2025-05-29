@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
-use endjine::{AlbumArt, BatchOutcome, Smartlist, batch, optimize_database};
+use endjine::{AlbumArt, BatchOutcome, PerformanceData, Playlist, Smartlist, Track, batch};
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
 
@@ -38,9 +38,102 @@ async fn main() -> Result<()> {
         }
     };
 
-    log::info!("Scanning Smartlists...");
+    scan_tracks(&pool).await;
+
+    scan_playlists(&pool).await;
+
+    scan_playlist_entities(&pool).await;
+
+    scan_smartlists(&pool).await;
+
+    scan_performance_data(&pool).await;
+
+    delete_orphaned_performance_data(&pool).await;
+
+    delete_unused_album_art(&pool).await;
+
+    shrink_album_art_images(&pool).await;
+
+    optimize_database(&pool).await;
+
+    log::info!("Finished housekeeping");
+
+    Ok(())
+}
+
+async fn scan_tracks(pool: &SqlitePool) {
+    log::info!("Scanning Track...");
+    // Try to load all Playlists from the database to verify the schema definition.
+    let (ok_count, err_count) = Track::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch Track: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} Tracks(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} Tracks(s)");
+    }
+}
+
+async fn scan_playlists(pool: &SqlitePool) {
+    log::info!("Scanning Playlist...");
+    // Try to load all Playlists from the database to verify the schema definition.
+    let (ok_count, err_count) = Playlist::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch Playlist: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} Playlists(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} Playlists(s)");
+    }
+}
+
+async fn scan_playlist_entities(pool: &SqlitePool) {
+    log::info!("Scanning PlaylistEntity...");
+    // Try to load all Playlists from the database to verify the schema definition.
+    let (ok_count, err_count) = Playlist::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch PlaylistEntity: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} PlaylistEntity(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} PlaylistEntity(s)");
+    }
+}
+
+async fn scan_smartlists(pool: &SqlitePool) {
+    log::info!("Scanning Smartlist...");
     // Try to load all Smartlists from the database to verify the schema definition.
-    let (smartlist_ok_count, smartlist_err_count) = Smartlist::fetch_all(&pool)
+    let (ok_count, err_count) = Smartlist::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
@@ -52,15 +145,56 @@ async fn main() -> Result<()> {
             std::future::ready(counts)
         })
         .await;
-    let smartlist_count = smartlist_ok_count + smartlist_err_count;
-    if smartlist_err_count > 0 {
-        log::warn!("Found {smartlist_count} Smartlist(s): {smartlist_err_count} unreadable");
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} Smartlist(s): {err_count} unreadable");
     } else {
-        log::info!("Found {smartlist_count} Smartlist(s)");
+        log::info!("Found {count} Smartlist(s)");
     }
+}
 
+async fn scan_performance_data(pool: &SqlitePool) {
+    log::info!("Scanning PerformanceData...");
+    // Try to load all PerformanceData from the database to verify the schema definition.
+    let (ok_count, err_count) = PerformanceData::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch PerformanceData: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} PerformanceData(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} PerformanceData(s)");
+    }
+}
+
+async fn delete_orphaned_performance_data(pool: &SqlitePool) {
+    log::info!("Deleting orphaned PerformanceData...");
+    match PerformanceData::delete_orphaned(pool).await {
+        Ok(rows_affected) => {
+            if rows_affected > 0 {
+                log::info!("Deleted {rows_affected} row(s) of orphaned PerformanceData");
+            } else {
+                log::info!("No orphaned PerformanceData found");
+            }
+        }
+        Err(err) => {
+            log::warn!("Failed to delete orphaned PerformanceData: {err}");
+        }
+    }
+}
+
+async fn delete_unused_album_art(pool: &SqlitePool) {
     log::info!("Deleting unused AlbumArt...");
-    match AlbumArt::delete_unused(&pool).await {
+    match AlbumArt::delete_unused(pool).await {
         Ok(rows_affected) => {
             if rows_affected > 0 {
                 log::info!("Deleted {rows_affected} row(s) of unused AlbumArt");
@@ -72,7 +206,9 @@ async fn main() -> Result<()> {
             log::warn!("Failed to delete unused AlbumArt: {err}");
         }
     }
+}
 
+async fn shrink_album_art_images(pool: &SqlitePool) {
     log::info!("Shrinking AlbumArt images...");
     {
         let BatchOutcome {
@@ -80,7 +216,7 @@ async fn main() -> Result<()> {
             skipped,
             failed,
             aborted_error,
-        } = batch::shrink_album_art(&pool).await;
+        } = batch::shrink_album_art(pool).await;
         log::info!(
             "Shrinking of AlbumArt images finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
             failed = failed.len()
@@ -89,13 +225,16 @@ async fn main() -> Result<()> {
             log::warn!("Shrinking of AlbumArt images aborted with error: {err}");
         }
     }
+}
 
+async fn optimize_database(pool: &SqlitePool) {
     log::info!("Optimizing database...");
-    if let Err(err) = optimize_database(&pool).await {
-        log::warn!("Failed to optimize database: {err}");
+    match endjine::optimize_database(pool).await {
+        Ok(()) => {
+            log::info!("Optimized database");
+        }
+        Err(err) => {
+            log::warn!("Failed to optimize database: {err}");
+        }
     }
-
-    log::info!("Finished housekeeping");
-
-    Ok(())
 }

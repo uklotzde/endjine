@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use sqlx::{FromRow, types::time::OffsetDateTime};
+use futures_util::stream::BoxStream;
+use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
 
 use crate::{DbUuid, TrackId};
 
@@ -19,6 +20,31 @@ pub struct Playlist {
     pub is_explicitly_exported: bool,
 }
 
+impl Playlist {
+    /// Fetches all [`Playlist`]s asynchronously.
+    ///
+    /// Unfiltered and in no particular order.
+    #[must_use]
+    pub fn fetch_all<'a>(
+        executor: impl SqliteExecutor<'a> + 'a,
+    ) -> BoxStream<'a, sqlx::Result<Playlist>> {
+        sqlx::query_as(r"SELECT * FROM Playlist").fetch(executor)
+    }
+
+    /// Loads a single [`Playlist`]s by ID.
+    ///
+    /// Returns `Ok(None)` if the requested [`Playlist`]s has not been found.
+    pub async fn try_load(
+        executor: impl SqliteExecutor<'_>,
+        id: PlaylistId,
+    ) -> sqlx::Result<Option<Playlist>> {
+        sqlx::query_as(r"SELECT * FROM Playlist WHERE id=?1")
+            .bind(id)
+            .fetch_optional(executor)
+            .await
+    }
+}
+
 crate::db_id!(PlaylistEntityId);
 
 #[derive(Debug, Clone, FromRow)]
@@ -30,6 +56,31 @@ pub struct PlaylistEntity {
     pub database_uuid: DbUuid,
     pub next_entity_id: PlaylistEntityId,
     pub membership_reference: i64,
+}
+
+impl PlaylistEntity {
+    /// Fetches all [`PlaylistEntity`]s asynchronously.
+    ///
+    /// Unfiltered and in no particular order.
+    #[must_use]
+    pub fn fetch_all<'a>(
+        executor: impl SqliteExecutor<'a> + 'a,
+    ) -> BoxStream<'a, sqlx::Result<PlaylistEntity>> {
+        sqlx::query_as(r"SELECT * FROM PlaylistEntity").fetch(executor)
+    }
+
+    /// Loads a single [`PlaylistEntity`]s by ID.
+    ///
+    /// Returns `Ok(None)` if the requested [`PlaylistEntity`]s has not been found.
+    pub async fn try_load(
+        executor: impl SqliteExecutor<'_>,
+        id: PlaylistEntityId,
+    ) -> sqlx::Result<Option<PlaylistEntity>> {
+        sqlx::query_as(r"SELECT * FROM PlaylistEntity WHERE id=?1")
+            .bind(id)
+            .fetch_optional(executor)
+            .await
+    }
 }
 
 crate::db_id!(PlaylistAllChildrenId);

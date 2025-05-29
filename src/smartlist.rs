@@ -3,7 +3,7 @@
 
 use futures_util::stream::BoxStream;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool, types::time::OffsetDateTime};
+use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
 
 crate::db_uuid!(SmartlistUuid);
 
@@ -25,20 +25,22 @@ impl Smartlist {
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
-    pub fn fetch_all(pool: &SqlitePool) -> BoxStream<'_, sqlx::Result<Smartlist>> {
-        sqlx::query_as(r"SELECT * FROM Smartlist").fetch(pool)
+    pub fn fetch_all<'a>(
+        executor: impl SqliteExecutor<'a> + 'a,
+    ) -> BoxStream<'a, sqlx::Result<Smartlist>> {
+        sqlx::query_as(r"SELECT * FROM Smartlist").fetch(executor)
     }
 
     /// Loads a single [`Smartlist`]s by UUID.
     ///
     /// Returns `Ok(None)` if the requested [`Smartlist`]s has not been found.
     pub async fn try_load(
-        pool: &SqlitePool,
+        executor: impl SqliteExecutor<'_>,
         list_uuid: &SmartlistUuid,
     ) -> sqlx::Result<Option<Smartlist>> {
         sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
             .bind(list_uuid)
-            .fetch_optional(pool)
+            .fetch_optional(executor)
             .await
     }
 }
