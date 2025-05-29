@@ -24,6 +24,16 @@ pub struct Historylist {
 }
 
 impl Historylist {
+    /// Checks if the table is available in the database.
+    pub async fn is_available<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<bool> {
+        let (exists,) = sqlx::query_as(
+            r"SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='Historylist')",
+        )
+        .fetch_one(executor)
+        .await?;
+        Ok(exists)
+    }
+
     /// Fetches all [`Historylist`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.

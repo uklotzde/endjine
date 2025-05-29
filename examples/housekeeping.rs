@@ -7,7 +7,10 @@ use anyhow::{Result, bail};
 use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
-use endjine::{AlbumArt, BatchOutcome, PerformanceData, Playlist, Smartlist, Track, batch};
+use endjine::{
+    AlbumArt, BatchOutcome, Historylist, HistorylistEntity, PerformanceData, Playlist,
+    PlaylistEntity, Smartlist, Track, batch,
+};
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
 
@@ -45,6 +48,10 @@ async fn main() -> Result<()> {
     scan_playlist_entities(&pool).await;
 
     scan_smartlists(&pool).await;
+
+    if scan_historylists(&pool).await {
+        scan_historylist_entities(&pool).await;
+    }
 
     scan_performance_data(&pool).await;
 
@@ -130,7 +137,11 @@ async fn scan_playlist_entities(pool: &SqlitePool) {
     }
 }
 
-async fn scan_smartlists(pool: &SqlitePool) {
+async fn scan_smartlists(pool: &SqlitePool) -> bool {
+    if !matches!(Smartlist::is_available(pool).await, Ok(true)) {
+        log::info!("Smartlist not available in database");
+        return false;
+    }
     log::info!("Scanning Smartlist...");
     // Try to load all Smartlists from the database to verify the schema definition.
     let (ok_count, err_count) = Smartlist::fetch_all(pool)
@@ -150,6 +161,58 @@ async fn scan_smartlists(pool: &SqlitePool) {
         log::warn!("Found {count} Smartlist(s): {err_count} unreadable");
     } else {
         log::info!("Found {count} Smartlist(s)");
+    }
+    true
+}
+
+async fn scan_historylists(pool: &SqlitePool) -> bool {
+    if !matches!(Historylist::is_available(pool).await, Ok(true)) {
+        log::info!("Historylist not available in database");
+        return false;
+    }
+    log::info!("Scanning Historylist...");
+    // Try to load all Historylists from the database to verify the schema definition.
+    let (ok_count, err_count) = Historylist::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch Historylist: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} Historylist(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} Historylist(s)");
+    }
+    true
+}
+
+async fn scan_historylist_entities(pool: &SqlitePool) {
+    log::info!("Scanning HistorylistEntity...");
+    // Try to load all Historylists from the database to verify the schema definition.
+    let (ok_count, err_count) = HistorylistEntity::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch HistorylistEntity: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} HistorylistEntity(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} HistorylistEntity(s)");
     }
 }
 
