@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 
 use endjine::{
     AlbumArt, BatchOutcome, Historylist, HistorylistEntity, PerformanceData, Playlist,
-    PlaylistEntity, Smartlist, Track, batch,
+    PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
 };
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
@@ -45,12 +45,14 @@ async fn main() -> Result<()> {
 
     scan_playlists(&pool).await;
 
-    scan_playlist_entities(&pool).await;
+    scan_playlist_items(&pool).await;
 
     scan_smartlists(&pool).await;
 
+    scan_preparelist_items(&pool).await;
+
     if scan_historylists(&pool).await {
-        scan_historylist_entities(&pool).await;
+        scan_historylist_items(&pool).await;
     }
 
     scan_performance_data(&pool).await;
@@ -114,9 +116,9 @@ async fn scan_playlists(pool: &SqlitePool) {
     }
 }
 
-async fn scan_playlist_entities(pool: &SqlitePool) {
+async fn scan_playlist_items(pool: &SqlitePool) {
     log::info!("Scanning PlaylistEntity...");
-    // Try to load all Playlists from the database to verify the schema definition.
+    // Try to load all PlaylistEntity from the database to verify the schema definition.
     let (ok_count, err_count) = PlaylistEntity::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -131,9 +133,9 @@ async fn scan_playlist_entities(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Found {count} PlaylistEntity(s): {err_count} unreadable");
+        log::warn!("Found {count} Playlist item(s): {err_count} unreadable");
     } else {
-        log::info!("Found {count} PlaylistEntity(s)");
+        log::info!("Found {count} Playlist item(s)");
     }
 }
 
@@ -161,6 +163,34 @@ async fn scan_smartlists(pool: &SqlitePool) -> bool {
         log::warn!("Found {count} Smartlist(s): {err_count} unreadable");
     } else {
         log::info!("Found {count} Smartlist(s)");
+    }
+    true
+}
+
+async fn scan_preparelist_items(pool: &SqlitePool) -> bool {
+    if !matches!(PreparelistEntity::is_available(pool).await, Ok(true)) {
+        log::info!("PreparelistEntity not available in database");
+        return false;
+    }
+    log::info!("Scanning Preparelist items...");
+    // Try to load all PreparelistEntity from the database to verify the schema definition.
+    let (ok_count, err_count) = PreparelistEntity::fetch_all(pool)
+        .fold((0, 0), |(ok_count, err_count), result| {
+            let counts = match result {
+                Ok(_) => (ok_count + 1, err_count),
+                Err(err) => {
+                    log::warn!("Failed to fetch PreparelistEntity: {err:#}");
+                    (ok_count, err_count + 1)
+                }
+            };
+            std::future::ready(counts)
+        })
+        .await;
+    let count = ok_count + err_count;
+    if err_count > 0 {
+        log::warn!("Found {count} Preparelist item(s): {err_count} unreadable");
+    } else {
+        log::info!("Found {count} Preparelist item(s)");
     }
     true
 }
@@ -193,9 +223,9 @@ async fn scan_historylists(pool: &SqlitePool) -> bool {
     true
 }
 
-async fn scan_historylist_entities(pool: &SqlitePool) {
-    log::info!("Scanning HistorylistEntity...");
-    // Try to load all Historylists from the database to verify the schema definition.
+async fn scan_historylist_items(pool: &SqlitePool) {
+    log::info!("Scanning Historylist items...");
+    // Try to load all HistorylistEntity from the database to verify the schema definition.
     let (ok_count, err_count) = HistorylistEntity::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -210,9 +240,9 @@ async fn scan_historylist_entities(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Found {count} HistorylistEntity(s): {err_count} unreadable");
+        log::warn!("Found {count} Historylist item(s): {err_count} unreadable");
     } else {
-        log::info!("Found {count} HistorylistEntity(s)");
+        log::info!("Found {count} Historylist item(s)");
     }
 }
 
