@@ -12,5 +12,5 @@ crate::db_id!(PreparelistEntityId);
 pub struct PreparelistEntity {
     pub id: PreparelistEntityId,
     pub track_id: TrackId,
-    pub track_number: Option<i64>,
+    pub track_number: i64,
 }
