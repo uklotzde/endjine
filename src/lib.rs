@@ -5,7 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 mod album_art;
-pub use self::album_art::{AlbumArt, AlbumArtId};
+pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
 
 mod changelog;
 pub use self::changelog::{ChangeLog, ChangeLogId};

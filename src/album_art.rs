@@ -109,3 +109,10 @@ fn decode_image(image_data: &[u8]) -> ImageResult<(Option<ImageFormat>, DynamicI
     let image_format = reader.format();
     reader.decode().map(|image| (image_format, image))
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AlbumArtImageQuality {
+    Low,
+    Medium,
+    High,
+}

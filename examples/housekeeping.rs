@@ -216,7 +216,7 @@ async fn shrink_album_art_images(pool: &SqlitePool) {
             skipped,
             failed,
             aborted_error,
-        } = batch::shrink_album_art(pool).await;
+        } = batch::shrink_album_art(pool, endjine::AlbumArtImageQuality::Low).await;
         log::info!(
             "Shrinking of AlbumArt images finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
             failed = failed.len()

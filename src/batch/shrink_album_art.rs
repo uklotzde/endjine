@@ -6,11 +6,9 @@ use image::{ImageFormat, codecs::jpeg::JpegEncoder};
 use sqlx::SqlitePool;
 use tokio::task::block_in_place;
 
-use crate::{AlbumArt, AlbumArtId, BatchOutcome};
+use crate::{AlbumArt, AlbumArtId, AlbumArtImageQuality, BatchOutcome};
 
 const BATCH_UPDATE_SIZE: u16 = 128;
-
-const JPEG_QUALITY: u8 = 70;
 
 const MAX_RATIO: f64 = 0.75;
 
@@ -22,8 +20,20 @@ struct BatchUpdateItem {
     image_data: Vec<u8>,
 }
 
+#[must_use]
+const fn jpeg_quality(image_quality: AlbumArtImageQuality) -> u8 {
+    match image_quality {
+        AlbumArtImageQuality::Low => 50,
+        AlbumArtImageQuality::Medium => 75,
+        AlbumArtImageQuality::High => 90,
+    }
+}
+
 #[expect(clippy::too_many_lines, reason = "TODO")]
-pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
+pub async fn shrink_album_art(
+    pool: &SqlitePool,
+    image_quality: AlbumArtImageQuality,
+) -> BatchOutcome {
     let mut outcome = BatchOutcome::default();
     // All ids in the database are strictly positive.
     let mut last_id = AlbumArtId::INVALID_MIN_EXCLUSIVE;
@@ -126,7 +136,8 @@ pub async fn shrink_album_art(pool: &SqlitePool) -> BatchOutcome {
             // that Engine DJ will reuse album art when adding tracks with the same
             // image.
             let mut image_data_jpeg = Vec::with_capacity(256_000);
-            let encoder = JpegEncoder::new_with_quality(&mut image_data_jpeg, JPEG_QUALITY);
+            let encoder =
+                JpegEncoder::new_with_quality(&mut image_data_jpeg, jpeg_quality(image_quality));
             if let Err(err) = block_in_place(|| image.write_with_encoder(encoder)) {
                 log::warn!("Failed to re-encode album art {id} as JPEG: {err}");
                 outcome.failed.push(Box::new(err));

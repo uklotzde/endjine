@@ -45,7 +45,8 @@ pub struct Track {
     pub date_added: Option<OffsetDateTime>,
     pub is_available: bool,
     pub is_metadata_of_packed_track_changed: bool,
-    #[sqlx(rename = "isPerfomanceDataOfPackedTrackChanged")] // Typo in column name
+    // Typo in column name of database schema requires renaming.
+    #[sqlx(rename = "isPerfomanceDataOfPackedTrackChanged")]
     pub is_performance_data_of_packed_track_changed: bool,
     pub played_indicator: Option<i64>,
     pub is_metadata_imported: bool,
