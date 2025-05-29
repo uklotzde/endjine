@@ -15,6 +15,9 @@ mod db_id;
 mod db_uuid;
 pub use self::db_uuid::DbUuid;
 
+mod historylist;
+pub use self::historylist::{Historylist, HistorylistEntity, HistorylistEntityId, HistorylistId};
+
 mod information;
 pub use self::information::{
     Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR,
