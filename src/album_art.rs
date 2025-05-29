@@ -92,7 +92,7 @@ impl AlbumArt {
 
     pub async fn delete_unused(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
         let result =
-            sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track)")
+            sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track WHERE albumArtId IS NOT NULL)")
                 .execute(executor)
                 .await?;
         Ok(result.rows_affected())
