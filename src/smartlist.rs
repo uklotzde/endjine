@@ -7,19 +7,19 @@ use sqlx::{
     types::{Uuid, time::OffsetDateTime},
 };
 
-use crate::DbUuid;
-
 mod rules;
 pub use self::rules::{Rules, RulesItem, RulesMatch};
+
+crate::db_uuid!(SmartlistUuid);
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Smartlist {
-    pub list_uuid: DbUuid,
+    pub list_uuid: SmartlistUuid,
     pub title: String,
     pub parent_playlist_path: String,
     pub next_playlist_path: String,
-    pub next_list_uuid: DbUuid,
+    pub next_list_uuid: SmartlistUuid,
     #[sqlx(json)]
     pub rules: Rules,
     pub last_edit_time: OffsetDateTime,

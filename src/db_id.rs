@@ -5,8 +5,7 @@
 
 /// Macro for defining type-safe database ID wrappers for _SQLx_.
 ///
-/// This macro creates a newtype wrapper around i64 that provides type safety
-/// for database IDs while implementing all necessary traits for sqlx integration.
+/// This macro creates a newtype wrapper for defining type-safe database IDs.
 #[allow(clippy::doc_markdown, reason = "SQLx")]
 #[macro_export]
 macro_rules! db_id {

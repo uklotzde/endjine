@@ -21,7 +21,7 @@ pub use self::information::{
 };
 
 mod pack;
-pub use self::pack::{Pack, PackId};
+pub use self::pack::{Pack, PackId, PackUuid};
 
 mod performance;
 pub use self::performance::{PerformanceData, PerformanceDataId};
@@ -36,7 +36,7 @@ mod preparelist;
 pub use self::preparelist::{PreparelistEntity, PreparelistEntityId};
 
 pub mod smartlist;
-pub use self::smartlist::Smartlist;
+pub use self::smartlist::{Smartlist, SmartlistUuid};
 
 mod track;
 pub use self::track::{Track, TrackId};

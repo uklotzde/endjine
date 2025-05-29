@@ -7,11 +7,13 @@ use crate::{ChangeLogId, DbUuid};
 
 crate::db_id!(PackId);
 
+crate::db_uuid!(PackUuid);
+
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Pack {
     pub id: PackId,
-    pub pack_id: DbUuid,
+    pub pack_id: PackUuid,
     pub change_log_database_uuid: DbUuid,
     pub change_log_id: ChangeLogId,
     pub last_pack_time: OffsetDateTime,
