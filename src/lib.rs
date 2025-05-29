@@ -35,8 +35,10 @@ pub use self::playlist::{
 mod preparelist;
 pub use self::preparelist::{PreparelistEntity, PreparelistEntityId};
 
-pub mod smartlist;
-pub use self::smartlist::{Smartlist, SmartlistUuid};
+mod smartlist;
+pub use self::smartlist::{
+    Smartlist, SmartlistRules, SmartlistRulesItem, SmartlistRulesMatch, SmartlistUuid,
+};
 
 mod track;
 pub use self::track::{Track, TrackId};

@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{
-    FromRow, SqlitePool,
-    types::{Uuid, time::OffsetDateTime},
-};
-
-mod rules;
-pub use self::rules::{Rules, RulesItem, RulesMatch};
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, SqlitePool, types::time::OffsetDateTime};
 
 crate::db_uuid!(SmartlistUuid);
 
@@ -21,7 +16,7 @@ pub struct Smartlist {
     pub next_playlist_path: String,
     pub next_list_uuid: SmartlistUuid,
     #[sqlx(json)]
-    pub rules: Rules,
+    pub rules: SmartlistRules,
     pub last_edit_time: OffsetDateTime,
 }
 
@@ -37,10 +32,36 @@ impl Smartlist {
     /// Loads a single [`Smartlist`]s by UUID.
     ///
     /// Returns `Ok(None)` if the requested [`Smartlist`]s has not been found.
-    pub async fn try_load(pool: &SqlitePool, list_uuid: &Uuid) -> sqlx::Result<Option<Smartlist>> {
+    pub async fn try_load(
+        pool: &SqlitePool,
+        list_uuid: &SmartlistUuid,
+    ) -> sqlx::Result<Option<Smartlist>> {
         sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
-            .bind(list_uuid.as_hyphenated())
+            .bind(list_uuid)
             .fetch_optional(pool)
             .await
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SmartlistRules {
+    #[serde(rename = "match")]
+    pub r#match: SmartlistRulesMatch,
+    pub rules: Vec<SmartlistRulesItem>,
+    pub rv: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SmartlistRulesItem {
+    pub col: String,
+    pub con: String,
+    pub param: String,
+    pub v: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SmartlistRulesMatch {
+    One,
+    All,
 }
