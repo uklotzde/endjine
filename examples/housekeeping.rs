@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
@@ -27,9 +27,16 @@ async fn main() -> Result<()> {
         .map_or_else(|| DEFAULT_DATABASE_PATH.into(), Cow::Owned);
 
     let database_url = format!("sqlite:{database_path}");
-    let pool = SqlitePool::connect(&database_url).await?;
-
-    log::info!("Opened database: {database_path}");
+    let pool = match SqlitePool::connect(&database_url).await {
+        Ok(pool) => {
+            log::info!("Opened database file: {database_path}");
+            pool
+        }
+        Err(err) => {
+            log::error!("Failed to open database file {database_path}: {err:#}");
+            bail!("aborted");
+        }
+    };
 
     log::info!("Scanning Smartlists...");
     // Try to load all Smartlists from the database to verify the schema definition.
