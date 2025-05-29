@@ -7,13 +7,13 @@
 mod album_art;
 pub use self::album_art::{AlbumArt, AlbumArtId};
 
+mod changelog;
+pub use self::changelog::{ChangeLog, ChangeLogId};
+
 mod db_id;
 
 mod db_uuid;
 pub use self::db_uuid::DbUuid;
-
-mod changelog;
-pub use self::changelog::{ChangeLog, ChangeLogId};
 
 mod information;
 pub use self::information::{
