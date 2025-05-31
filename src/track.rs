@@ -62,6 +62,11 @@ pub struct Track {
 }
 
 impl Track {
+    // Engine DJ writes this string into the `albumArt` column. But many
+    // tracks just contain NULL. This value doesn't seem to be needed and
+    // the column value could safely be set to NULL.
+    pub const DEFAULT_ALBUM_ART: &str = "image://planck/0";
+
     /// Fetches all [`Track`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
@@ -69,7 +74,7 @@ impl Track {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM Track").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Track""#).fetch(executor)
     }
 
     /// Loads a single [`Track`] by ID.
@@ -79,9 +84,20 @@ impl Track {
         executor: impl SqliteExecutor<'_>,
         id: TrackId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM Track WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "Track" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
+    }
+
+    /// Reset unused default album art for tracks with album art.
+    pub async fn reset_unused_default_album_art(
+        executor: impl SqliteExecutor<'_>,
+    ) -> sqlx::Result<u64> {
+        let result = sqlx::query(r#"UPDATE "Track" SET "albumArt"=NULL WHERE "albumArt"=?1 AND "albumArtId" IS NOT NULL"#)
+            .bind(Self::DEFAULT_ALBUM_ART)
+            .execute(executor)
+            .await?;
+        Ok(result.rows_affected())
     }
 }

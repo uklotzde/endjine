@@ -62,7 +62,7 @@ impl AlbumArt {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM AlbumArt").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "AlbumArt""#).fetch(executor)
     }
 
     /// Loads a single [`AlbumArt`] by id.
@@ -72,7 +72,7 @@ impl AlbumArt {
         executor: impl SqliteExecutor<'_>,
         id: AlbumArtId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "AlbumArt" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
@@ -83,7 +83,7 @@ impl AlbumArt {
         id: AlbumArtId,
         image_data: impl AsRef<[u8]>,
     ) -> sqlx::Result<SqliteQueryResult> {
-        sqlx::query(r"UPDATE AlbumArt SET albumArt=?2 WHERE id=?1")
+        sqlx::query(r#"UPDATE "AlbumArt" SET "albumArt"=?2 WHERE "id"=?1"#)
             .bind(id)
             .bind(image_data.as_ref())
             .execute(executor)
@@ -92,7 +92,7 @@ impl AlbumArt {
 
     pub async fn delete_unused(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
         let result =
-            sqlx::query(r"DELETE FROM AlbumArt WHERE id NOT IN (SELECT albumArtId FROM Track WHERE albumArtId IS NOT NULL)")
+            sqlx::query(r#"DELETE FROM "AlbumArt" WHERE "id" NOT IN (SELECT "albumArtId" FROM "Track" WHERE "albumArtId" IS NOT NULL)"#)
                 .execute(executor)
                 .await?;
         Ok(result.rows_affected())

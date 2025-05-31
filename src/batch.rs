@@ -3,11 +3,11 @@
 
 use std::error::Error;
 
-mod reset_album_art;
-pub use self::reset_album_art::reset_album_art;
+mod purge_album_art;
+pub use self::purge_album_art::purge_album_art;
 
-mod shrink_album_art;
-pub use self::shrink_album_art::shrink_album_art;
+mod shrink_album_art_images;
+pub use self::shrink_album_art_images::shrink_album_art_images;
 
 #[derive(Debug, Default)]
 pub struct BatchOutcome {

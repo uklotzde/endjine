@@ -24,7 +24,7 @@ impl Smartlist {
     /// Checks if the table is available in the database.
     pub async fn is_available<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<bool> {
         let (exists,) = sqlx::query_as(
-            r"SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='Smartlist')",
+            r#"SELECT EXISTS(SELECT 1 FROM "sqlite_master" WHERE "type"='table' AND "name"='Smartlist')"#,
         )
         .fetch_one(executor)
         .await?;
@@ -38,7 +38,7 @@ impl Smartlist {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM Smartlist").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Smartlist""#).fetch(executor)
     }
 
     /// Loads a single [`Smartlist`] by UUID.
@@ -48,7 +48,7 @@ impl Smartlist {
         executor: impl SqliteExecutor<'_>,
         list_uuid: &SmartlistUuid,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM Smartlist WHERE listUuid=?1")
+        sqlx::query_as(r#"SELECT * FROM "Smartlist" WHERE "listUuid"=?1"#)
             .bind(list_uuid)
             .fetch_optional(executor)
             .await

@@ -29,7 +29,7 @@ impl PerformanceData {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM PerformanceData").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "PerformanceData""#).fetch(executor)
     }
 
     /// Loads a single [`PerformanceData`] by ID.
@@ -39,7 +39,7 @@ impl PerformanceData {
         executor: impl SqliteExecutor<'_>,
         id: PerformanceDataId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM PerformanceData WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "PerformanceData" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
@@ -47,10 +47,11 @@ impl PerformanceData {
 
     /// Delete all records with no associated track.
     pub async fn delete_orphaned(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
-        let result =
-            sqlx::query(r"DELETE FROM PerformanceData WHERE trackId NOT IN (SELECT id FROM Track)")
-                .execute(executor)
-                .await?;
+        let result = sqlx::query(
+            r#"DELETE FROM "PerformanceData" WHERE "trackId" NOT IN (SELECT "id" FROM "Track")"#,
+        )
+        .execute(executor)
+        .await?;
         Ok(result.rows_affected())
     }
 }

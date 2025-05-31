@@ -16,7 +16,7 @@ mod db_uuid;
 pub use self::db_uuid::DbUuid;
 
 mod historylist;
-pub use self::historylist::{Historylist, HistorylistEntry, HistorylistEntryId, HistorylistId};
+pub use self::historylist::{Historylist, HistorylistEntity, HistorylistEntityId, HistorylistId};
 
 mod information;
 pub use self::information::{
@@ -32,11 +32,11 @@ pub use self::performance::{PerformanceData, PerformanceDataId};
 mod playlist;
 pub use self::playlist::{
     Playlist, PlaylistAllChildren, PlaylistAllChildrenId, PlaylistAllParent, PlaylistAllParentId,
-    PlaylistEntry, PlaylistEntryId, PlaylistId, PlaylistPath, PlaylistPathId,
+    PlaylistEntity, PlaylistEntityId, PlaylistId, PlaylistPath, PlaylistPathId,
 };
 
 mod preparelist;
-pub use self::preparelist::{PreparelistEntry, PreparelistEntryId};
+pub use self::preparelist::{PreparelistEntity, PreparelistEntityId};
 
 mod smartlist;
 pub use self::smartlist::{

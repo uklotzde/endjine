@@ -28,7 +28,7 @@ impl Playlist {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM Playlist").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Playlist""#).fetch(executor)
     }
 
     /// Loads a single [`Playlist`] by ID.
@@ -38,14 +38,14 @@ impl Playlist {
         executor: impl SqliteExecutor<'_>,
         id: PlaylistId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM Playlist WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "Playlist" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
     }
 }
 
-crate::db_id!(PlaylistEntryId);
+crate::db_id!(PlaylistEntityId);
 
 /// Entry in a [`Playlist`].
 ///
@@ -53,24 +53,24 @@ crate::db_id!(PlaylistEntryId);
 /// should have been named `PlaylistEntry` instead of `PlaylistEntity`.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct PlaylistEntry {
-    pub id: PlaylistEntryId,
+pub struct PlaylistEntity {
+    pub id: PlaylistEntityId,
     pub list_id: PlaylistId,
     pub track_id: TrackId,
     pub database_uuid: DbUuid,
-    pub next_entity_id: PlaylistEntryId,
+    pub next_entity_id: PlaylistEntityId,
     pub membership_reference: i64,
 }
 
-impl PlaylistEntry {
-    /// Fetches all [`PlaylistEntry`]s asynchronously.
+impl PlaylistEntity {
+    /// Fetches all [`PlaylistEntity`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM PlaylistEntity").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "PlaylistEntity""#).fetch(executor)
     }
 
     /// Fetches all items of a list asynchronously.
@@ -81,19 +81,19 @@ impl PlaylistEntry {
         executor: impl SqliteExecutor<'a> + 'a,
         list_id: PlaylistId,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM PlaylistEntity where listId=?1")
+        sqlx::query_as(r#"SELECT * FROM "PlaylistEntity" where "listId"=?1"#)
             .bind(list_id)
             .fetch(executor)
     }
 
-    /// Loads a single [`PlaylistEntry`] by ID.
+    /// Loads a single [`PlaylistEntity`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`PlaylistEntry`] has not been found.
+    /// Returns `Ok(None)` if the requested [`PlaylistEntity`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: PlaylistEntryId,
+        id: PlaylistEntityId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM PlaylistEntity WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "PlaylistEntity" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await

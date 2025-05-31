@@ -96,7 +96,7 @@ impl Information {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM Information").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Information""#).fetch(executor)
     }
 
     /// Loads a single [`Information`] by id.
@@ -106,7 +106,7 @@ impl Information {
         executor: impl SqliteExecutor<'_>,
         id: InformationId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM Information WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "Information" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await

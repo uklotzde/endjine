@@ -27,7 +27,7 @@ impl Historylist {
     /// Checks if the table is available in the database.
     pub async fn is_available<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<bool> {
         let (exists,) = sqlx::query_as(
-            r"SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='Historylist')",
+            r#"SELECT EXISTS(SELECT 1 FROM "sqlite_master" WHERE "type"='table' AND "name"='Historylist')"#,
         )
         .fetch_one(executor)
         .await?;
@@ -41,7 +41,7 @@ impl Historylist {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM Historylist").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Historylist""#).fetch(executor)
     }
 
     /// Loads a single [`Historylist`] by ID.
@@ -51,14 +51,14 @@ impl Historylist {
         executor: impl SqliteExecutor<'_>,
         id: HistorylistId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM Historylist WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "Historylist" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
     }
 }
 
-crate::db_id!(HistorylistEntryId);
+crate::db_id!(HistorylistEntityId);
 
 /// Entry in a [`Historylist`].
 ///
@@ -66,22 +66,22 @@ crate::db_id!(HistorylistEntryId);
 /// should have been named `HistorylistEntry` instead of `HistorylistEntity`.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct HistorylistEntry {
-    pub id: HistorylistEntryId,
+pub struct HistorylistEntity {
+    pub id: HistorylistEntityId,
     pub list_id: HistorylistId,
     pub track_id: TrackId,
     pub start_time: OffsetDateTime,
 }
 
-impl HistorylistEntry {
-    /// Fetches all [`HistorylistEntry`]s asynchronously.
+impl HistorylistEntity {
+    /// Fetches all [`HistorylistEntity`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM HistorylistEntity").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "HistorylistEntity""#).fetch(executor)
     }
 
     /// Fetches all items of a list asynchronously.
@@ -92,19 +92,19 @@ impl HistorylistEntry {
         executor: impl SqliteExecutor<'a> + 'a,
         list_id: HistorylistId,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM HistorylistEntity where listId=?1")
+        sqlx::query_as(r#"SELECT * FROM "HistorylistEntity" where "listId"=?1"#)
             .bind(list_id)
             .fetch(executor)
     }
 
-    /// Loads a single [`HistorylistEntry`] by ID.
+    /// Loads a single [`HistorylistEntity`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`HistorylistEntry`] has not been found.
+    /// Returns `Ok(None)` if the requested [`HistorylistEntity`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: HistorylistEntryId,
+        id: HistorylistEntityId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM HistorylistEntity WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "HistorylistEntity" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await

@@ -30,7 +30,7 @@ const fn jpeg_quality(image_quality: AlbumArtImageQuality) -> u8 {
 }
 
 #[expect(clippy::too_many_lines, reason = "TODO")]
-pub async fn shrink_album_art(
+pub async fn shrink_album_art_images(
     pool: &SqlitePool,
     image_quality: AlbumArtImageQuality,
 ) -> BatchOutcome {
@@ -70,7 +70,7 @@ pub async fn shrink_album_art(
             }
             debug_assert!(batch_update_items.is_empty());
         }
-        let mut rows = sqlx::query_as(r"SELECT * FROM AlbumArt WHERE id>?1 ORDER BY id")
+        let mut rows = sqlx::query_as(r#"SELECT * FROM "AlbumArt" WHERE "id">?1 ORDER BY "id""#)
             .bind(last_id)
             .fetch(pool);
         let mut row_fetch_count = 0;

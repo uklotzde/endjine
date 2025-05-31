@@ -6,7 +6,7 @@ use sqlx::{FromRow, SqliteExecutor};
 
 use crate::TrackId;
 
-crate::db_id!(PreparelistEntryId);
+crate::db_id!(PreparelistEntityId);
 
 /// Entry in the _Preparelist_.
 ///
@@ -14,41 +14,41 @@ crate::db_id!(PreparelistEntryId);
 /// should have been named `PreparelistEntry` instead of `PreparelistEntity`.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct PreparelistEntry {
-    pub id: PreparelistEntryId,
+pub struct PreparelistEntity {
+    pub id: PreparelistEntityId,
     pub track_id: TrackId,
     pub track_number: i64,
 }
 
-impl PreparelistEntry {
+impl PreparelistEntity {
     /// Checks if the table is available in the database.
     pub async fn is_available<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<bool> {
         let (exists,) = sqlx::query_as(
-            r"SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='PreparelistEntity')",
+            r#"SELECT EXISTS(SELECT 1 FROM "sqlite_master" WHERE "type"='table' AND "name"='PreparelistEntity')"#,
         )
         .fetch_one(executor)
         .await?;
         Ok(exists)
     }
 
-    /// Fetches all [`PreparelistEntry`]s asynchronously.
+    /// Fetches all [`PreparelistEntity`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r"SELECT * FROM PreparelistEntity").fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "PreparelistEntity""#).fetch(executor)
     }
 
-    /// Loads a single [`PreparelistEntry`] by ID.
+    /// Loads a single [`PreparelistEntity`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`PreparelistEntry`] has not been found.
+    /// Returns `Ok(None)` if the requested [`PreparelistEntity`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: PreparelistEntryId,
+        id: PreparelistEntityId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r"SELECT * FROM PreparelistEntity WHERE id=?1")
+        sqlx::query_as(r#"SELECT * FROM "PreparelistEntity" WHERE "id"=?1"#)
             .bind(id)
             .fetch_optional(executor)
             .await
