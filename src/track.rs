@@ -4,7 +4,7 @@
 use futures_util::stream::BoxStream;
 use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
 
-use crate::DbUuid;
+use crate::{AlbumArtId, DbUuid};
 
 crate::db_id!(TrackId);
 
@@ -24,7 +24,7 @@ pub struct Track {
     pub filename: Option<String>,
     pub bitrate: Option<i64>,
     pub bpm_analyzed: Option<f64>,
-    pub album_art_id: Option<i64>,
+    pub album_art_id: AlbumArtId,
     pub file_bytes: Option<i64>,
     pub title: Option<String>,
     pub artist: Option<String>,
