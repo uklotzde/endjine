@@ -57,6 +57,10 @@ async fn main() -> Result<()> {
 
     scan_performance_data(&pool).await;
 
+    // let mut tx = pool.begin().await?;
+    // batch::reset_album_art(&mut tx).await?;
+    // tx.commit().await?;
+
     delete_orphaned_performance_data(&pool).await;
 
     delete_unused_album_art(&pool).await;

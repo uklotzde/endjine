@@ -3,6 +3,9 @@
 
 use std::error::Error;
 
+mod reset_album_art;
+pub use self::reset_album_art::reset_album_art;
+
 mod shrink_album_art;
 pub use self::shrink_album_art::shrink_album_art;
 
