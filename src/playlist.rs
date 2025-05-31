@@ -45,24 +45,25 @@ impl Playlist {
     }
 }
 
-crate::db_id!(PlaylistEntityId);
+crate::db_id!(PlaylistEntryId);
 
-/// Item in a [`Playlist`].
+/// Entry in a [`Playlist`].
 ///
-/// The terminology used in the schema is confusing.
+/// The terminology used in the schema is confusing and the table
+/// should have been named `PlaylistEntry` instead of `PlaylistEntity`.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct PlaylistEntity {
-    pub id: PlaylistEntityId,
+pub struct PlaylistEntry {
+    pub id: PlaylistEntryId,
     pub list_id: PlaylistId,
     pub track_id: TrackId,
     pub database_uuid: DbUuid,
-    pub next_entity_id: PlaylistEntityId,
+    pub next_entity_id: PlaylistEntryId,
     pub membership_reference: i64,
 }
 
-impl PlaylistEntity {
-    /// Fetches all [`PlaylistEntity`]s asynchronously.
+impl PlaylistEntry {
+    /// Fetches all [`PlaylistEntry`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
@@ -85,12 +86,12 @@ impl PlaylistEntity {
             .fetch(executor)
     }
 
-    /// Loads a single [`PlaylistEntity`] by ID.
+    /// Loads a single [`PlaylistEntry`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`PlaylistEntity`] has not been found.
+    /// Returns `Ok(None)` if the requested [`PlaylistEntry`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: PlaylistEntityId,
+        id: PlaylistEntryId,
     ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM PlaylistEntity WHERE id=?1")
             .bind(id)

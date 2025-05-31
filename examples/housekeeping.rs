@@ -8,8 +8,8 @@ use futures_util::StreamExt as _;
 use sqlx::SqlitePool;
 
 use endjine::{
-    AlbumArt, BatchOutcome, Historylist, HistorylistEntity, PerformanceData, Playlist,
-    PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
+    AlbumArt, BatchOutcome, Historylist, HistorylistEntry, PerformanceData, Playlist,
+    PlaylistEntry, PreparelistEntry, Smartlist, Track, batch,
 };
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
@@ -45,14 +45,14 @@ async fn main() -> Result<()> {
 
     scan_playlists(&pool).await;
 
-    scan_playlist_items(&pool).await;
+    scan_playlist_entries(&pool).await;
 
     scan_smartlists(&pool).await;
 
-    scan_preparelist_items(&pool).await;
+    scan_preparelist_entries(&pool).await;
 
     if scan_historylists(&pool).await {
-        scan_historylist_items(&pool).await;
+        scan_historylist_entries(&pool).await;
     }
 
     scan_performance_data(&pool).await;
@@ -71,8 +71,8 @@ async fn main() -> Result<()> {
 }
 
 async fn scan_tracks(pool: &SqlitePool) {
-    log::info!("Scanning Track...");
-    // Try to load all Playlists from the database to verify the schema definition.
+    log::info!("Scanning Track(s)...");
+    // Try to load all Track(s) from the database to verify the schema definition.
     let (ok_count, err_count) = Track::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -94,8 +94,8 @@ async fn scan_tracks(pool: &SqlitePool) {
 }
 
 async fn scan_playlists(pool: &SqlitePool) {
-    log::info!("Scanning Playlist...");
-    // Try to load all Playlists from the database to verify the schema definition.
+    log::info!("Scanning Playlist(s)...");
+    // Try to load all Playlist(s) from the database to verify the schema definition.
     let (ok_count, err_count) = Playlist::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -116,15 +116,15 @@ async fn scan_playlists(pool: &SqlitePool) {
     }
 }
 
-async fn scan_playlist_items(pool: &SqlitePool) {
-    log::info!("Scanning PlaylistEntity...");
-    // Try to load all PlaylistEntity from the database to verify the schema definition.
-    let (ok_count, err_count) = PlaylistEntity::fetch_all(pool)
+async fn scan_playlist_entries(pool: &SqlitePool) {
+    log::info!("Scanning Playlist entries...");
+    // Try to load all PlaylistEntry(s) from the database to verify the schema definition.
+    let (ok_count, err_count) = PlaylistEntry::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
                 Err(err) => {
-                    log::warn!("Failed to fetch PlaylistEntity: {err:#}");
+                    log::warn!("Failed to fetch PlaylistEntry: {err:#}");
                     (ok_count, err_count + 1)
                 }
             };
@@ -133,9 +133,9 @@ async fn scan_playlist_items(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Found {count} Playlist item(s): {err_count} unreadable");
+        log::warn!("Found {count} Playlist entry(s): {err_count} unreadable");
     } else {
-        log::info!("Found {count} Playlist item(s)");
+        log::info!("Found {count} Playlist entry(s)");
     }
 }
 
@@ -144,8 +144,8 @@ async fn scan_smartlists(pool: &SqlitePool) -> bool {
         log::info!("Smartlist not available in database");
         return false;
     }
-    log::info!("Scanning Smartlist...");
-    // Try to load all Smartlists from the database to verify the schema definition.
+    log::info!("Scanning Smartlist(s)...");
+    // Try to load all Smartlist(s) from the database to verify the schema definition.
     let (ok_count, err_count) = Smartlist::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -167,19 +167,19 @@ async fn scan_smartlists(pool: &SqlitePool) -> bool {
     true
 }
 
-async fn scan_preparelist_items(pool: &SqlitePool) -> bool {
-    if !matches!(PreparelistEntity::is_available(pool).await, Ok(true)) {
-        log::info!("PreparelistEntity not available in database");
+async fn scan_preparelist_entries(pool: &SqlitePool) -> bool {
+    if !matches!(PreparelistEntry::is_available(pool).await, Ok(true)) {
+        log::info!("PreparelistEntry not available in database");
         return false;
     }
-    log::info!("Scanning Preparelist items...");
-    // Try to load all PreparelistEntity from the database to verify the schema definition.
-    let (ok_count, err_count) = PreparelistEntity::fetch_all(pool)
+    log::info!("Scanning Preparelist entries...");
+    // Try to load all PreparelistEntry(s) from the database to verify the schema definition.
+    let (ok_count, err_count) = PreparelistEntry::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
                 Err(err) => {
-                    log::warn!("Failed to fetch PreparelistEntity: {err:#}");
+                    log::warn!("Failed to fetch PreparelistEntry: {err:#}");
                     (ok_count, err_count + 1)
                 }
             };
@@ -188,9 +188,9 @@ async fn scan_preparelist_items(pool: &SqlitePool) -> bool {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Found {count} Preparelist item(s): {err_count} unreadable");
+        log::warn!("Found {count} Preparelist entry(s): {err_count} unreadable");
     } else {
-        log::info!("Found {count} Preparelist item(s)");
+        log::info!("Found {count} Preparelist entry(s)");
     }
     true
 }
@@ -200,8 +200,8 @@ async fn scan_historylists(pool: &SqlitePool) -> bool {
         log::info!("Historylist not available in database");
         return false;
     }
-    log::info!("Scanning Historylist...");
-    // Try to load all Historylists from the database to verify the schema definition.
+    log::info!("Scanning Historylist(s)...");
+    // Try to load all Historylist(s) from the database to verify the schema definition.
     let (ok_count, err_count) = Historylist::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
@@ -223,15 +223,15 @@ async fn scan_historylists(pool: &SqlitePool) -> bool {
     true
 }
 
-async fn scan_historylist_items(pool: &SqlitePool) {
-    log::info!("Scanning Historylist items...");
-    // Try to load all HistorylistEntity from the database to verify the schema definition.
-    let (ok_count, err_count) = HistorylistEntity::fetch_all(pool)
+async fn scan_historylist_entries(pool: &SqlitePool) {
+    log::info!("Scanning Historylist entries...");
+    // Try to load all HistorylistEntry(s) from the database to verify the schema definition.
+    let (ok_count, err_count) = HistorylistEntry::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
                 Err(err) => {
-                    log::warn!("Failed to fetch HistorylistEntity: {err:#}");
+                    log::warn!("Failed to fetch HistorylistEntry: {err:#}");
                     (ok_count, err_count + 1)
                 }
             };
@@ -240,14 +240,14 @@ async fn scan_historylist_items(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Found {count} Historylist item(s): {err_count} unreadable");
+        log::warn!("Found {count} Historylist entry(s): {err_count} unreadable");
     } else {
-        log::info!("Found {count} Historylist item(s)");
+        log::info!("Found {count} Historylist entry(s)");
     }
 }
 
 async fn scan_performance_data(pool: &SqlitePool) {
-    log::info!("Scanning PerformanceData...");
+    log::info!("Scanning PerformanceData(s)...");
     // Try to load all PerformanceData from the database to verify the schema definition.
     let (ok_count, err_count) = PerformanceData::fetch_all(pool)
         .fold((0, 0), |(ok_count, err_count), result| {

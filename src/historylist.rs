@@ -58,22 +58,23 @@ impl Historylist {
     }
 }
 
-crate::db_id!(HistorylistEntityId);
+crate::db_id!(HistorylistEntryId);
 
-/// Item in a [`Historylist`].
+/// Entry in a [`Historylist`].
 ///
-/// The terminology used in the schema is confusing.
+/// The terminology used in the schema is confusing and the table
+/// should have been named `HistorylistEntry` instead of `HistorylistEntity`.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
-pub struct HistorylistEntity {
-    pub id: HistorylistEntityId,
+pub struct HistorylistEntry {
+    pub id: HistorylistEntryId,
     pub list_id: HistorylistId,
     pub track_id: TrackId,
     pub start_time: OffsetDateTime,
 }
 
-impl HistorylistEntity {
-    /// Fetches all [`HistorylistEntity`]s asynchronously.
+impl HistorylistEntry {
+    /// Fetches all [`HistorylistEntry`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
@@ -96,12 +97,12 @@ impl HistorylistEntity {
             .fetch(executor)
     }
 
-    /// Loads a single [`HistorylistEntity`] by ID.
+    /// Loads a single [`HistorylistEntry`] by ID.
     ///
-    /// Returns `Ok(None)` if the requested [`HistorylistEntity`] has not been found.
+    /// Returns `Ok(None)` if the requested [`HistorylistEntry`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: HistorylistEntityId,
+        id: HistorylistEntryId,
     ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r"SELECT * FROM HistorylistEntity WHERE id=?1")
             .bind(id)
