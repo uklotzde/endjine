@@ -60,7 +60,7 @@ macro_rules! db_id {
             fn decode(
                 value: sqlx::sqlite::SqliteValueRef<'r>,
             ) -> Result<Self, sqlx::error::BoxDynError> {
-                let value = <i64 as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+                let value = <i64 as sqlx::Decode<'r, sqlx::Sqlite>>::decode(value)?;
                 let id = Self(value);
                 debug_assert!(id.is_valid() || id == Self::INVALID_ZERO);
                 Ok(id)
@@ -72,7 +72,7 @@ macro_rules! db_id {
                 &self,
                 buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
             ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-                <i64 as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(&self.0, buf)
+                <i64 as sqlx::Encode<'q, sqlx::Sqlite>>::encode_by_ref(&self.0, buf)
             }
         }
     };

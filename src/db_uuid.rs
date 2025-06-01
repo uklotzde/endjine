@@ -46,7 +46,7 @@ macro_rules! db_uuid {
                 value: sqlx::sqlite::SqliteValueRef<'r>,
             ) -> Result<Self, sqlx::error::BoxDynError> {
                 let value =
-                    <std::borrow::Cow<'r, str> as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+                    <std::borrow::Cow<'r, str> as sqlx::Decode<'r, sqlx::Sqlite>>::decode(value)?;
                 if value.is_empty() {
                     // Special case: Decode empty string as nil.
                     return Ok(Self::nil());
@@ -63,7 +63,7 @@ macro_rules! db_uuid {
             ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
                 if self.is_nil() {
                     // Special case: Encode nil as empty string.
-                    return <String as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(
+                    return <String as sqlx::Encode<'q, sqlx::Sqlite>>::encode_by_ref(
                         &String::new(),
                         buf,
                     );
