@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
+use sqlx::{FromRow, SqliteExecutor};
 
-use crate::{DbUuid, TrackId};
+use crate::{DbUuid, TrackId, UnixTimestamp};
 
 crate::db_id!(HistorylistId);
 
@@ -14,13 +14,13 @@ pub struct Historylist {
     pub id: HistorylistId,
     pub session_id: i64,
     pub title: Option<String>,
-    pub start_time: OffsetDateTime,
+    pub start_time: UnixTimestamp,
     pub timezone: Option<String>,
     pub origin_drive_name: Option<String>,
     pub origin_database_id: Option<DbUuid>,
     pub origin_list_id: Option<i64>,
     pub is_deleted: bool,
-    pub edit_time: Option<OffsetDateTime>,
+    pub edit_time: Option<UnixTimestamp>,
 }
 
 impl Historylist {
@@ -70,7 +70,7 @@ pub struct HistorylistEntity {
     pub id: HistorylistEntityId,
     pub list_id: HistorylistId,
     pub track_id: TrackId,
-    pub start_time: OffsetDateTime,
+    pub start_time: UnixTimestamp,
 }
 
 impl HistorylistEntity {

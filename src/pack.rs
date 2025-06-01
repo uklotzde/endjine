@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use sqlx::{FromRow, types::time::OffsetDateTime};
+use sqlx::FromRow;
 
-use crate::{ChangeLogId, DbUuid};
+use crate::{ChangeLogId, DbUuid, UnixTimestamp};
 
 crate::db_id!(PackId);
 
@@ -16,5 +16,5 @@ pub struct Pack {
     pub pack_id: PackUuid,
     pub change_log_database_uuid: DbUuid,
     pub change_log_id: ChangeLogId,
-    pub last_pack_time: OffsetDateTime,
+    pub last_pack_time: UnixTimestamp,
 }

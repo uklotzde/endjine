@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
+use sqlx::{FromRow, SqliteExecutor, types::time::PrimitiveDateTime};
 
 use crate::{DbUuid, TrackId};
 
@@ -16,7 +16,8 @@ pub struct Playlist {
     pub parent_list_id: PlaylistId,
     pub is_persisted: bool,
     pub next_list_id: PlaylistId,
-    pub last_edit_time: OffsetDateTime,
+    /// UTC timestamp encoded as plain date/time.
+    pub last_edit_time: PrimitiveDateTime,
     pub is_explicitly_exported: bool,
 }
 

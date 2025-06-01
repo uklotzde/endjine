@@ -5,6 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 mod album_art;
+
 pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
 
 mod changelog;
@@ -45,6 +46,9 @@ pub use self::smartlist::{
 
 mod track;
 pub use self::track::{Track, TrackId};
+
+mod unix_timestamp;
+pub use self::unix_timestamp::UnixTimestamp;
 
 #[cfg(feature = "batch")]
 pub mod batch;

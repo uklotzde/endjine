@@ -3,7 +3,7 @@
 
 use futures_util::stream::BoxStream;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
+use sqlx::{FromRow, SqliteExecutor, types::time::PrimitiveDateTime};
 
 crate::db_uuid!(SmartlistUuid);
 
@@ -17,7 +17,8 @@ pub struct Smartlist {
     pub next_list_uuid: SmartlistUuid,
     #[sqlx(json)]
     pub rules: SmartlistRules,
-    pub last_edit_time: OffsetDateTime,
+    /// UTC timestamp encoded as plain date/time.
+    pub last_edit_time: PrimitiveDateTime,
 }
 
 impl Smartlist {

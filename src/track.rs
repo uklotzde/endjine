@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use futures_util::stream::BoxStream;
-use sqlx::{FromRow, SqliteExecutor, types::time::OffsetDateTime};
+use sqlx::{FromRow, SqliteExecutor};
 
-use crate::{AlbumArtId, DbUuid};
+use crate::{AlbumArtId, DbUuid, UnixTimestamp};
 
 crate::db_id!(TrackId);
 
@@ -37,12 +37,12 @@ pub struct Track {
     pub key: Option<i64>,
     pub rating: Option<i64>,
     pub album_art: Option<String>,
-    pub time_last_played: Option<OffsetDateTime>,
+    pub time_last_played: Option<UnixTimestamp>,
     pub is_played: bool,
     pub file_type: Option<String>,
     pub is_analyzed: bool,
-    pub date_created: Option<OffsetDateTime>,
-    pub date_added: Option<OffsetDateTime>,
+    pub date_created: UnixTimestamp,
+    pub date_added: UnixTimestamp,
     pub is_available: bool,
     pub is_metadata_of_packed_track_changed: bool,
     // Typo in column name of database schema requires renaming.
@@ -58,7 +58,7 @@ pub struct Track {
     pub origin_track_id: Option<i64>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
-    pub last_edit_time: OffsetDateTime,
+    pub last_edit_time: UnixTimestamp,
 }
 
 impl Track {
