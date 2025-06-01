@@ -100,9 +100,9 @@ async fn track_scan(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Track: Scanned {count} rows: {err_count} unreadable");
+        log::warn!("Track: Scanned {count} row(s): {err_count} unreadable");
     } else {
-        log::info!("Track: Scanned {count} rows");
+        log::info!("Track: Scanned {count} row(s)");
     }
 }
 
