@@ -9,7 +9,7 @@ use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
     AlbumArt, BatchOutcome, Historylist, HistorylistEntity, PerformanceData, Playlist,
-    PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
+    PlaylistEntity, PreparelistEntity, Smartlist, Track, batch, open_database,
 };
 
 const DEFAULT_DATABASE_PATH: &str = "m.db";
@@ -29,8 +29,7 @@ async fn main() -> Result<()> {
         .nth(1)
         .map_or_else(|| DEFAULT_DATABASE_PATH.into(), Cow::Owned);
 
-    let database_url = format!("sqlite:{database_path}");
-    let pool = match SqlitePool::connect(&database_url).await {
+    let (pool, _info) = match open_database(database_path.as_ref(), None).await {
         Ok(pool) => {
             log::info!("Opened database file: {database_path}");
             pool

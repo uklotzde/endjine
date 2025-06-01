@@ -11,6 +11,9 @@ pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
 mod changelog;
 pub use self::changelog::{ChangeLog, ChangeLogId};
 
+mod database;
+pub use self::database::{open_database, optimize_database};
+
 mod db_id;
 
 mod db_uuid;
@@ -54,6 +57,3 @@ pub use self::unix_timestamp::UnixTimestamp;
 pub mod batch;
 #[cfg(feature = "batch")]
 pub use self::batch::BatchOutcome;
-
-mod util;
-pub use self::util::optimize_database;

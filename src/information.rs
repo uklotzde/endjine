@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use futures_util::stream::BoxStream;
+use std::fmt;
+
 use sqlx::{FromRow, SqliteExecutor, types::Uuid};
 
 use crate::DbUuid;
@@ -32,6 +33,17 @@ impl SchemaVersion {
             patch: _,
         } = self;
         *major == SCHEMA_VERSION_MAJOR && *minor == SCHEMA_VERSION_MINOR
+    }
+}
+
+impl fmt::Display for SchemaVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            major,
+            minor,
+            patch,
+        } = self;
+        write!(f, "{major}.{minor}.{patch}")
     }
 }
 
@@ -91,14 +103,13 @@ impl Information {
         }
     }
 
-    /// Fetches all [`Information`] asynchronously.
+    /// Eagerly loads all [`Information`] at once.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
-    pub fn fetch_all<'a>(
-        executor: impl SqliteExecutor<'a> + 'a,
-    ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "Information""#).fetch(executor)
+    pub async fn load_all<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as(r#"SELECT * FROM "Information""#)
+            .fetch_all(executor)
+            .await
     }
 
     /// Loads a single [`Information`] by id.
@@ -110,6 +121,19 @@ impl Information {
     ) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(r#"SELECT * FROM "Information" WHERE "id"=?1"#)
             .bind(id)
+            .fetch_optional(executor)
+            .await
+    }
+
+    /// Loads a single [`Information`] by UUID.
+    ///
+    /// Returns `Ok(None)` if the requested [`Information`] has not been found.
+    pub async fn try_load_by_uuid(
+        executor: impl SqliteExecutor<'_>,
+        uuid: &DbUuid,
+    ) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as(r#"SELECT * FROM "Information" WHERE "uuid"=?1"#)
+            .bind(uuid)
             .fetch_optional(executor)
             .await
     }

@@ -31,6 +31,12 @@ macro_rules! db_uuid {
             }
         }
 
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
         impl sqlx::Type<sqlx::Sqlite> for $name {
             fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
                 <sqlx::types::uuid::fmt::Hyphenated as sqlx::Type<sqlx::Sqlite>>::type_info()
