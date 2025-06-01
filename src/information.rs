@@ -46,9 +46,11 @@ pub struct Information {
     schema_version_major: i64,
     schema_version_minor: i64,
     schema_version_patch: i64,
-    #[expect(dead_code)]
+    // Typo in column name of database schema requires renaming.
+    #[sqlx(rename = "currentPlayedIndiciator")]
+    #[expect(dead_code, reason = "Not used yet.")]
     current_played_indicator: Option<i64>,
-    #[expect(dead_code)]
+    #[expect(dead_code, reason = "Not used yet.")]
     last_rekord_box_library_import_read_counter: Option<i64>,
 }
 
