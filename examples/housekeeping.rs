@@ -3,7 +3,7 @@
 
 #![allow(unreachable_code)]
 
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
 use anyhow::{Result, bail};
 use futures_util::StreamExt as _;
@@ -61,6 +61,15 @@ async fn main() -> Result<()> {
     }
 
     performance_data_scan(&pool).await;
+
+    if let Some(base_path) = PathBuf::from(database_path.as_ref())
+        .parent()
+        .and_then(|parent_dir| parent_dir.parent())
+    {
+        find_track_file_issues(&pool, base_path.to_path_buf()).await;
+    } else {
+        log::warn!("Cannot resolve base path from database path");
+    }
 
     // Skip all modifying operations.
     return Ok(());
@@ -281,6 +290,35 @@ async fn performance_data_scan(pool: &SqlitePool) {
     } else {
         log::info!("PerformanceData: Scanned {count} rows(s)");
     }
+}
+
+async fn find_track_file_issues(pool: &SqlitePool, base_path: PathBuf) {
+    log::info!("Track: Scanning for file issues...");
+    batch::find_track_file_issues(pool, base_path)
+        .for_each(|next_result| {
+            match next_result {
+                Ok(batch::TrackFileIssueItem { db_id, db_path, file_path, file_issue }) => match file_issue {
+                    batch::TrackFileIssue::FileMissing => {
+                        log::warn!(
+                            "Track: File \"{file_path}\" of track {db_id} with path \"{db_path}\" is missing",
+                            file_path = file_path.display()
+                        );
+                    }
+                    batch::TrackFileIssue::FileError(err) => {
+                        log::warn!(
+                            "Track: File \"{file_path}\" of track {db_id} with path \"{db_path}\" is inaccessible: {err:#}",
+                            file_path = file_path.display()
+                        );
+                    }
+                },
+                Err(err) => {
+                    // Should not occur.
+                    log::error!("Database error: {err:#}");
+                }
+            }
+            std::future::ready(())
+        })
+        .await;
 }
 
 async fn performance_data_delete_orphaned(pool: &SqlitePool) {
