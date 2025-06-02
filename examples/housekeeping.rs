@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
+#![allow(unreachable_code)]
+
 use std::borrow::Cow;
 
 use anyhow::{Result, bail};
@@ -60,7 +62,8 @@ async fn main() -> Result<()> {
 
     performance_data_scan(&pool).await;
 
-    track_reset_unused_default_album_art(&pool).await;
+    // Skip all modifying operations.
+    return Ok(());
 
     ///////////////////////////////////////////////////////////////////
     // Modifying operations.                                         //
@@ -71,6 +74,8 @@ async fn main() -> Result<()> {
     // tx.commit().await?;
 
     performance_data_delete_orphaned(&pool).await;
+
+    track_reset_unused_default_album_art(&pool).await;
 
     album_art_delete_unused(&pool).await;
 
