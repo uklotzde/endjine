@@ -6,7 +6,7 @@ name = "endjine"
 description = "Accessing the Engine DJ library database."
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 license = "MPL-2.0"
 readme = "README.md"
 repository = "https://github.com/uklotzde/endjine"
@@ -24,7 +24,7 @@ sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 
 futures-util = { version = "0.3.31", optional = true }
 log = { version = "0.4.27", optional = true }
-tokio = { version = "1.45.1", optional = true, features = ["rt-multi-thread"] }
+tokio = { version = "1.47.1", optional = true, features = ["rt-multi-thread"] }
 
 [features]
 default = ["batch"]
@@ -35,7 +35,7 @@ anyhow = "1.0.98"
 colored = "3.0.0"
 env_logger = "0.11.8"
 sqlx = { version = "0.8.6", features = ["runtime-tokio"] }
-tokio = { version = "1.45.1", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 
 [lints.rust]
 future_incompatible = "warn"
