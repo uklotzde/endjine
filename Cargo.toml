@@ -22,9 +22,18 @@ image = "0.25.6"
 serde = { version = "1.0.219", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 
-futures-util = { version = "0.3.31", optional = true }
-log = { version = "0.4.27", optional = true }
-tokio = { version = "1.47.1", optional = true, features = ["rt-multi-thread"] }
+[dependencies.futures-util]
+version = "0.3.31"
+optional = true
+
+[dependencies.log]
+version = "0.4.27"
+optional = true
+
+[dependencies.tokio]
+version = "1.47.1"
+optional = true
+features = ["rt-multi-thread"]
 
 [features]
 default = ["batch"]
