@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
 
     performance_data_scan(&pool).await;
 
-    if let Some(base_path) = grandparent_path(Path::new(database_path.as_ref())) {
+    if let Some(base_path) = Track::base_path(Path::new(database_path.as_ref())) {
         find_track_file_issues(&pool, base_path.to_path_buf()).await;
     } else {
         log::warn!("Cannot resolve base path from database path");
@@ -95,11 +95,6 @@ async fn main() -> Result<()> {
     log::info!("Finished housekeeping");
 
     Ok(())
-}
-
-#[must_use]
-fn grandparent_path(path: &Path) -> Option<&Path> {
-    path.parent().and_then(Path::parent)
 }
 
 async fn track_scan(pool: &SqlitePool) {

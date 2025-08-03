@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
+use std::path::{Path, PathBuf};
+
 use futures_util::stream::BoxStream;
 use sqlx::{FromRow, SqliteExecutor};
 
@@ -62,10 +64,24 @@ pub struct Track {
 }
 
 impl Track {
-    // Engine DJ writes this string into the `albumArt` column. But many
-    // tracks just contain NULL. This value doesn't seem to be needed and
-    // the column value could safely be set to NULL.
+    /// Default non-null album art.
+    ///
+    /// Engine DJ writes this string into the `albumArt` column. But many
+    /// tracks just contain NULL. This value doesn't seem to be needed and
+    /// the column value could safely be set to NULL.
     pub const DEFAULT_ALBUM_ART: &str = "image://planck/0";
+
+    /// Determines the base path for all relative track paths in the database.
+    #[must_use]
+    pub fn base_path(database_path: &Path) -> Option<&Path> {
+        grandparent_path(database_path)
+    }
+
+    /// Determines the file path given the base path.
+    #[must_use]
+    pub fn file_path(&self, base_path: &Path) -> Option<PathBuf> {
+        self.path.as_ref().map(|path| base_path.join(path))
+    }
 
     /// Fetches all [`Track`]s asynchronously.
     ///
@@ -100,4 +116,9 @@ impl Track {
             .await?;
         Ok(result.rows_affected())
     }
+}
+
+#[must_use]
+fn grandparent_path(path: &Path) -> Option<&Path> {
+    path.parent().and_then(Path::parent)
 }
