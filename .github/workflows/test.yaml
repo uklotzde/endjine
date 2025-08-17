@@ -26,11 +26,39 @@ env:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner_os: macos-latest
+          - target: aarch64-pc-windows-msvc
+            runner_os: windows-latest
+          - target: aarch64-unknown-linux-musl
+            runner_os: ubuntu-latest
+          - target: armv7-unknown-linux-musleabihf
+            runner_os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            runner_os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner_os: windows-latest
+          - target: x86_64-unknown-linux-gnu
+            runner_os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            runner_os: ubuntu-latest
+
+    runs-on: ${{ matrix.runner_os }}
 
     steps:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # The build target will be selected implicitly by setup-cross-toolchain-action (see below).
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
 
       - name: Check out repository
         uses: actions/checkout@v5
@@ -47,4 +75,5 @@ jobs:
           shared-key: ${{ github.workflow }}-${{ github.job }}
 
       - name: Run tests
+        if: matrix.target != 'aarch64-pc-windows-msvc'
         run: cargo test --locked --all-features
