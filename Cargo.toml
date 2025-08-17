@@ -40,7 +40,7 @@ default = ["batch"]
 batch = ["dep:futures-util", "dep:log", "dep:tokio"]
 
 [dev-dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 colored = "3.0.0"
 env_logger = "0.11.8"
 sqlx = { version = "0.8.6", features = ["runtime-tokio"] }
