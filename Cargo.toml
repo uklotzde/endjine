@@ -6,7 +6,7 @@ name = "endjine"
 description = "Accessing the Engine DJ library database."
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.91"
 license = "MPL-2.0"
 readme = "README.md"
 repository = "https://github.com/uklotzde/endjine"
@@ -18,7 +18,7 @@ include = ["README.md", "LICENSES/", "src/"]
 all-features = true
 
 [dependencies]
-image = "0.25.8"
+image = "0.25.9"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 
