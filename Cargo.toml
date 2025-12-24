@@ -6,7 +6,7 @@ name = "endjine"
 description = "Accessing the Engine DJ library database."
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.92"
 license = "MPL-2.0"
 readme = "README.md"
 repository = "https://github.com/uklotzde/endjine"
@@ -27,7 +27,7 @@ version = "0.3.31"
 optional = true
 
 [dependencies.log]
-version = "0.4.28"
+version = "0.4.29"
 optional = true
 
 [dependencies.tokio]
