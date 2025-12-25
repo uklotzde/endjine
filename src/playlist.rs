@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
+use std::borrow::Borrow;
+
 use futures_util::stream::BoxStream;
+use itertools::Itertools;
 use sqlx::{FromRow, SqliteExecutor, types::time::PrimitiveDateTime};
 
 use crate::{DbUuid, TrackId};
@@ -127,4 +130,56 @@ pub struct PlaylistPath {
     pub id: i64,
     pub path: String,
     pub position: i64,
+}
+
+pub const PLAYLIST_PATH_SEGMENT_SEPARATOR: &str = ";";
+
+#[must_use]
+pub fn is_valid_playlist_path_segment(segment: &str) -> bool {
+    !segment.is_empty() && !segment.contains(PLAYLIST_PATH_SEGMENT_SEPARATOR)
+}
+
+#[must_use]
+pub fn concat_playlist_path_segments_to_string<'s, S>(
+    segments: impl IntoIterator<Item = &'s S>,
+) -> String
+where
+    S: Borrow<str> + ?Sized + 's,
+{
+    #[expect(unstable_name_collisions, reason = "itertools")]
+    segments
+        .into_iter()
+        .map(Borrow::borrow)
+        .inspect(|segment| {
+            debug_assert!(is_valid_playlist_path_segment(segment));
+        })
+        .intersperse(PLAYLIST_PATH_SEGMENT_SEPARATOR)
+        .chain(std::iter::once(PLAYLIST_PATH_SEGMENT_SEPARATOR))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn concat_playlist_path_segments_to_string() {
+        assert_eq!(
+            super::concat_playlist_path_segments_to_string({
+                let empty_array: [&str; 0] = [];
+                empty_array
+            }),
+            ";"
+        );
+        assert_eq!(
+            super::concat_playlist_path_segments_to_string(["foo"]),
+            "foo;"
+        );
+        assert_eq!(
+            super::concat_playlist_path_segments_to_string(["foo", "bar"]),
+            "foo;bar;"
+        );
+        assert_eq!(
+            super::concat_playlist_path_segments_to_string(["foo bar"]),
+            "foo bar;"
+        );
+    }
 }

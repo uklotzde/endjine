@@ -35,8 +35,10 @@ pub use self::performance::{PerformanceData, PerformanceDataId};
 
 mod playlist;
 pub use self::playlist::{
-    Playlist, PlaylistAllChildren, PlaylistAllChildrenId, PlaylistAllParent, PlaylistAllParentId,
-    PlaylistEntity, PlaylistEntityId, PlaylistId, PlaylistPath, PlaylistPathId,
+    PLAYLIST_PATH_SEGMENT_SEPARATOR, Playlist, PlaylistAllChildren, PlaylistAllChildrenId,
+    PlaylistAllParent, PlaylistAllParentId, PlaylistEntity, PlaylistEntityId, PlaylistId,
+    PlaylistPath, PlaylistPathId, concat_playlist_path_segments_to_string,
+    is_valid_playlist_path_segment,
 };
 
 mod preparelist;
