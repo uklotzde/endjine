@@ -90,7 +90,7 @@ impl Track {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "Track""#).fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Track" ORDER BY "id""#).fetch(executor)
     }
 
     /// Loads a single [`Track`] by ID.

@@ -32,6 +32,13 @@ macro_rules! db_id {
             #[allow(clippy::doc_markdown, reason = "SQLite")]
             pub const INVALID_ZERO: Self = Self(0);
 
+            /// Creates a new id.
+            #[must_use]
+            #[allow(dead_code, reason = "not used for each generated type")]
+            pub const fn new(raw_id: i64) -> Self {
+                Self(raw_id)
+            }
+
             /// Checks if the ID is valid.
             #[must_use]
             pub const fn is_valid(self) -> bool {

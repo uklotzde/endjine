@@ -41,7 +41,7 @@ impl Historylist {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "Historylist""#).fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "Historylist" ORDER BY "id""#).fetch(executor)
     }
 
     /// Loads a single [`Historylist`] by ID.
@@ -81,7 +81,7 @@ impl HistorylistEntity {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "HistorylistEntity""#).fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "HistorylistEntity" ORDER BY "id""#).fetch(executor)
     }
 
     /// Fetches all items of a list asynchronously.

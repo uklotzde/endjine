@@ -137,6 +137,22 @@ impl Information {
             .fetch_optional(executor)
             .await
     }
+
+    // Gets the (unambiguous) database UUID.
+    pub async fn read_db_uuid(executor: impl SqliteExecutor<'_>) -> sqlx::Result<Option<DbUuid>> {
+        let fetched = sqlx::query_scalar(r#"SELECT "uuid" FROM "Information" LIMIT 2"#)
+            .fetch_all(executor)
+            .await?;
+
+        let mut iter = fetched.into_iter();
+        let Some(uuid) = iter.next() else {
+            return Ok(None);
+        };
+        if iter.next().is_some() {
+            return Err(sqlx::Error::Protocol("ambiguous database UUID".into()));
+        }
+        Ok(Some(uuid))
+    }
 }
 
 #[cfg(test)]

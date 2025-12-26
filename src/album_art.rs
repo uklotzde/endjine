@@ -62,7 +62,7 @@ impl AlbumArt {
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "AlbumArt""#).fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "AlbumArt" ORDER BY "id""#).fetch(executor)
     }
 
     /// Loads a single [`AlbumArt`] by id.
