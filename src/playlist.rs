@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 
 use futures_util::{StreamExt as _, stream::BoxStream};
 use itertools::Itertools;
-use sqlx::{FromRow, SqliteExecutor, types::time::PrimitiveDateTime};
+use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime};
 
 use crate::{DbUuid, TrackId};
 
@@ -72,31 +72,6 @@ impl Playlist {
             .await
     }
 
-    /// Reads the (unambiguous) database UUID for this playlist's entries.
-    ///
-    /// Returns `Ok(None)` if the requested [`Playlist`] has no entries.
-    pub async fn read_db_uuid_from_entries(
-        executor: impl SqliteExecutor<'_>,
-        id: PlaylistId,
-    ) -> sqlx::Result<Option<DbUuid>> {
-        let mut fetch = sqlx::query_scalar(
-            r#"SELECT DISTINCT "databaseUuid" FROM "PlaylistEntity" WHERE "listId"=?1 LIMIT 2"#,
-        )
-        .bind(id)
-        .fetch(executor);
-
-        let Some(uuid_result) = fetch.next().await else {
-            return Ok(None);
-        };
-        let uuid = uuid_result?;
-        if fetch.next().await.is_some() {
-            return Err(sqlx::Error::Protocol(
-                "playlist entries reference multiple database UUIDs".into(),
-            ));
-        }
-        Ok(Some(uuid))
-    }
-
     /// Adds tracks to a playlist.
     ///
     /// This method appends tracks to the end of the playlist.
@@ -111,7 +86,7 @@ impl Playlist {
     where
         E: SqliteExecutor<'e>,
     {
-        let last_entity = PlaylistEntity::try_load_last_in_list(executor(), id).await?;
+        let last_entity = PlaylistEntity::try_load_last_of_list(&mut executor, id).await?;
 
         let (mut prev_entity_id, mut next_membership_ref) = last_entity.map_or(
             (PlaylistEntityId::INVALID_ZERO, MIN_MEMBERSHIP_REFERENCE),
@@ -156,6 +131,95 @@ impl Playlist {
 
         Ok(())
     }
+
+    /// Replaces all tracks in a playlist.
+    ///
+    /// This method replaces all existing tracks in the playlist with the provided track IDs.
+    /// It reuses existing entries where possible.
+    ///
+    /// Must run within a transaction in isolation.
+    pub async fn replace_tracks<'e, E>(
+        mut executor: impl FnMut() -> E,
+        id: PlaylistId,
+        db_uuid: DbUuid,
+        track_ids: impl IntoIterator<Item = TrackId>,
+    ) -> sqlx::Result<()>
+    where
+        E: SqliteExecutor<'e>,
+    {
+        let mut existing_entries = PlaylistEntity::load_list(executor(), id).await?.into_iter();
+        let mut track_ids = track_ids.into_iter();
+        let mut last_id_membership_reference = None;
+        while let Some(next_track_id) = track_ids.next() {
+            let Some(next_entry) = existing_entries.next() else {
+                // All existing entries have been reused.
+                // The remaining tracks need to be added as new entries.
+                return Self::add_tracks(
+                    executor,
+                    id,
+                    db_uuid,
+                    std::iter::once(next_track_id).chain(track_ids),
+                )
+                .await;
+            };
+
+            // Update entry.
+            if next_track_id != next_entry.track_id || db_uuid != next_entry.database_uuid {
+                sqlx::query(
+                    r#"UPDATE "PlaylistEntity"
+                    SET "trackId"=?1, "databaseUuid"=?2
+                    WHERE "id"=?3"#,
+                )
+                .bind(next_track_id)
+                .bind(db_uuid)
+                .bind(next_entry.id)
+                .execute(executor())
+                .await?;
+            }
+
+            // Prepare next iteration.
+            let next_membership_reference = next_entry.membership_reference;
+            debug_assert!(next_membership_reference >= MIN_MEMBERSHIP_REFERENCE);
+            debug_assert!(
+                last_id_membership_reference
+                    .is_none_or(|(_, last_membership_reference)| last_membership_reference
+                        < next_membership_reference)
+            );
+            last_id_membership_reference = Some((next_entry.id, next_membership_reference));
+        }
+
+        let Some((last_id, last_membership_reference)) = last_id_membership_reference else {
+            // Playlist is empty.
+            debug_assert_eq!(
+                PlaylistEntity::count_list(executor(), id).await.ok(),
+                Some(0)
+            );
+            let _query_result = PlaylistEntity::delete_list(executor(), id).await?;
+            return Ok(());
+        };
+
+        // Terminate linked list.
+        sqlx::query(
+            r#"UPDATE "PlaylistEntity"
+                   SET "nextEntityId"=?1
+                   WHERE "id"=?2"#,
+        )
+        .bind(PlaylistEntityId::INVALID_ZERO)
+        .bind(last_id)
+        .execute(executor())
+        .await?;
+
+        // Delete unused/obsolete entries.
+        let _query_result = sqlx::query(
+            r#"DELETE FROM "PlaylistEntity" WHERE "listId"=?1 AND "membershipReference">?2"#,
+        )
+        .bind(id)
+        .bind(last_membership_reference)
+        .execute(executor())
+        .await?;
+
+        Ok(())
+    }
 }
 
 crate::db_id!(PlaylistEntityId);
@@ -186,7 +250,7 @@ impl PlaylistEntity {
         sqlx::query_as(r#"SELECT * FROM "PlaylistEntity" ORDER BY "id""#).fetch(executor)
     }
 
-    /// Fetches all items of a [`Playlist`] asynchronously.
+    /// Fetches all entries of a [`Playlist`] asynchronously.
     ///
     /// Ordered by the canonical position in the playlist.
     #[must_use]
@@ -203,23 +267,105 @@ impl PlaylistEntity {
         .fetch(executor)
     }
 
+    /// Loads all entries of a [`Playlist`] asynchronously.
+    ///
+    /// Ordered by the canonical position in the playlist.
+    pub async fn load_list(
+        executor: impl SqliteExecutor<'_>,
+        list_id: PlaylistId,
+    ) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as(
+            r#"SELECT * FROM "PlaylistEntity"
+                WHERE "listId"=?1"
+                ORDERED BY "membershipReference""#,
+        )
+        .bind(list_id)
+        .fetch_all(executor)
+        .await
+    }
+
+    /// Deletes all entries of a [`Playlist`] asynchronously.
+    pub async fn delete_list(
+        executor: impl SqliteExecutor<'_>,
+        list_id: PlaylistId,
+    ) -> sqlx::Result<SqliteQueryResult> {
+        sqlx::query(r#"DELETE FROM "PlaylistEntity" WHERE "listId"=?1"#)
+            .bind(list_id)
+            .execute(executor)
+            .await
+    }
+
+    pub async fn count_list(
+        executor: impl SqliteExecutor<'_>,
+        list_id: PlaylistId,
+    ) -> sqlx::Result<u64> {
+        let count: i64 =
+            sqlx::query_scalar(r#"SELECT COUNT(*) FROM "PlaylistEntity" WHERE "listId"=?1"#)
+                .bind(list_id)
+                .fetch_one(executor)
+                .await?;
+        debug_assert!(count >= 0);
+        Ok(count.cast_unsigned())
+    }
+
+    /// Reads the (unambiguous) database UUID for this playlist's entries.
+    ///
+    /// Returns `Ok(None)` if the requested [`Playlist`] has no entries.
+    pub async fn try_load_db_uuid_of_list<'e, E>(
+        mut executor: impl FnMut() -> E,
+        list_id: PlaylistId,
+    ) -> sqlx::Result<Option<DbUuid>>
+    where
+        E: SqliteExecutor<'e>,
+    {
+        let mut fetch = sqlx::query_scalar(
+            r#"SELECT DISTINCT "databaseUuid" FROM "PlaylistEntity" WHERE "listId"=?1 LIMIT 2"#,
+        )
+        .bind(list_id)
+        .fetch(executor());
+
+        let Some(uuid_result) = fetch.next().await else {
+            // Playlist is empty.
+            debug_assert_eq!(
+                PlaylistEntity::count_list(executor(), list_id).await.ok(),
+                Some(0)
+            );
+            return Ok(None);
+        };
+        let uuid = uuid_result?;
+        if fetch.next().await.is_some() {
+            return Err(sqlx::Error::Protocol(
+                "playlist entries reference multiple database UUIDs".into(),
+            ));
+        }
+        Ok(Some(uuid))
+    }
+
     /// Loads the last item of a list.
     ///
     /// Returns `Ok(None)` if the list is empty. Fails if the last item
     /// is ambiguous.
-    pub async fn try_load_last_in_list(
-        executor: impl SqliteExecutor<'_>,
+    pub async fn try_load_last_of_list<'e, E>(
+        mut executor: impl FnMut() -> E,
         list_id: PlaylistId,
-    ) -> sqlx::Result<Option<Self>> {
+    ) -> sqlx::Result<Option<Self>>
+    where
+        E: SqliteExecutor<'e>,
+    {
         let mut fetch = sqlx::query_as(
             r#"SELECT * FROM "PlaylistEntity"
                WHERE "listId"=?1 AND "membershipReference"=MAX("membershipReference")
                DESC LIMIT 2"#,
         )
         .bind(list_id)
-        .fetch(executor);
+        .fetch(executor());
 
         let Some(last_entity_result) = fetch.next().await else {
+            // Playlist is empty.
+            debug_assert_eq!(
+                PlaylistEntity::count_list(executor(), list_id).await.ok(),
+                Some(0)
+            );
             return Ok(None);
         };
         let last_entity: PlaylistEntity = last_entity_result?;
