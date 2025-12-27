@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::borrow::Borrow;
+use std::{
+    borrow::{Borrow, Cow},
+    path::Path,
+};
 
+use anyhow::bail;
 use futures_util::{StreamExt as _, stream::BoxStream};
 use itertools::Itertools;
 use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime};
 
-use crate::{DbUuid, TrackId};
+use crate::{DbUuid, Track, TrackId, resolve_track_path};
 
 crate::db_id!(PlaylistId);
 
@@ -130,6 +134,40 @@ impl Playlist {
         }
 
         Ok(())
+    }
+
+    /// Adds tracks by path to a playlist.
+    ///
+    /// See also: [`add_tracks()`](Self::add_tracks).
+    pub fn add_tracks_by_path<'e, 'p, E>(
+        mut executor: impl FnMut() -> E + 'e,
+        id: PlaylistId,
+        db_uuid: DbUuid,
+        base_path: &Path,
+        track_paths: impl IntoIterator<Item = &'p Path>,
+    ) -> anyhow::Result<impl Future<Output = anyhow::Result<()>> + 'e>
+    where
+        E: SqliteExecutor<'e>,
+    {
+        let track_paths = track_paths
+            .into_iter()
+            .map(|track_path| resolve_track_path(base_path, track_path).map(Cow::into_owned))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(async move {
+            let mut track_ids = Vec::with_capacity(track_paths.len());
+            for track_path in track_paths {
+                let Some(track_id) = Track::find_id_by_path(executor(), &track_path).await? else {
+                    bail!(
+                        "unknown track path \"{track_path}\"",
+                        track_path = track_path.display()
+                    );
+                };
+                track_ids.push(track_id);
+            }
+            Self::add_tracks(executor, id, db_uuid, track_ids)
+                .await
+                .map_err(Into::into)
+        })
     }
 
     /// Replaces all tracks in a playlist.
