@@ -86,7 +86,7 @@ impl Playlist {
         id: PlaylistId,
         db_uuid: DbUuid,
         track_ids: impl IntoIterator<Item = TrackId>,
-    ) -> sqlx::Result<()>
+    ) -> anyhow::Result<()>
     where
         E: SqliteExecutor<'e>,
     {
@@ -164,9 +164,7 @@ impl Playlist {
                 };
                 track_ids.push(track_id);
             }
-            Self::add_tracks(executor, id, db_uuid, track_ids)
-                .await
-                .map_err(Into::into)
+            Self::add_tracks(executor, id, db_uuid, track_ids).await
         })
     }
 
@@ -181,7 +179,7 @@ impl Playlist {
         id: PlaylistId,
         db_uuid: DbUuid,
         track_ids: impl IntoIterator<Item = TrackId>,
-    ) -> sqlx::Result<()>
+    ) -> anyhow::Result<()>
     where
         E: SqliteExecutor<'e>,
     {
@@ -352,7 +350,7 @@ impl PlaylistEntity {
     pub async fn try_load_db_uuid_of_list<'e, E>(
         mut executor: impl FnMut() -> E,
         list_id: PlaylistId,
-    ) -> sqlx::Result<Option<DbUuid>>
+    ) -> anyhow::Result<Option<DbUuid>>
     where
         E: SqliteExecutor<'e>,
     {
@@ -372,9 +370,7 @@ impl PlaylistEntity {
         };
         let uuid = uuid_result?;
         if fetch.next().await.is_some() {
-            return Err(sqlx::Error::Protocol(
-                "playlist entries reference multiple database UUIDs".into(),
-            ));
+            bail!("playlist entries reference multiple database UUIDs");
         }
         Ok(Some(uuid))
     }
@@ -386,7 +382,7 @@ impl PlaylistEntity {
     pub async fn try_load_last_of_list<'e, E>(
         mut executor: impl FnMut() -> E,
         list_id: PlaylistId,
-    ) -> sqlx::Result<Option<Self>>
+    ) -> anyhow::Result<Option<Self>>
     where
         E: SqliteExecutor<'e>,
     {
@@ -409,14 +405,14 @@ impl PlaylistEntity {
         let last_entity: PlaylistEntity = last_entity_result?;
         debug_assert!(last_entity.membership_reference >= MIN_MEMBERSHIP_REFERENCE);
         if last_entity.next_entity_id.is_valid() {
-            return Err(sqlx::Error::Protocol(
-                "last entry in playlist has next entry".into(),
-            ));
+            bail!(
+                "last entry (id = {last_id}) in playlist has next entry (id = {next_id})",
+                last_id = last_entity.id,
+                next_id = last_entity.next_entity_id
+            );
         }
         if fetch.next().await.is_some() {
-            return Err(sqlx::Error::Protocol(
-                "playlist with multiple last entries".into(),
-            ));
+            bail!("playlist with multiple last entries");
         }
         Ok(Some(last_entity))
     }
