@@ -50,7 +50,7 @@ pub use self::smartlist::{
 };
 
 mod track;
-pub use self::track::{Track, TrackId};
+pub use self::track::{Track, TrackId, resolve_track_path};
 
 mod unix_timestamp;
 pub use self::unix_timestamp::UnixTimestamp;

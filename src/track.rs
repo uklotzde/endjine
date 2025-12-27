@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
+use anyhow::bail;
 use futures_util::stream::BoxStream;
 use sqlx::{FromRow, SqliteExecutor};
 
@@ -78,6 +82,8 @@ impl Track {
     }
 
     /// Determines the file path given the base path.
+    ///
+    /// The resulting path is not canonicalized.
     #[must_use]
     pub fn file_path(&self, base_path: &Path) -> Option<PathBuf> {
         self.path.as_ref().map(|path| base_path.join(path))
@@ -116,9 +122,93 @@ impl Track {
             .await?;
         Ok(result.rows_affected())
     }
+
+    /// Finds the [`TrackId`] for the given path.
+    ///
+    /// The path must be relative and match the path in the database.
+    pub async fn find_id_by_path(
+        executor: impl SqliteExecutor<'_>,
+        path: &Path,
+    ) -> sqlx::Result<Option<TrackId>> {
+        debug_assert!(path.is_relative());
+        debug_assert!(path.starts_with(RELATIVE_PATH_PREFIX));
+        sqlx::query_scalar(r#"SELECT "id" FROM "Track" WHERE "path"=?1"#)
+            .bind(path.display().to_string())
+            .fetch_optional(executor)
+            .await
+    }
+}
+
+const RELATIVE_PATH_PREFIX: &str = "..";
+
+pub fn resolve_track_path<'p>(
+    base_path: &Path,
+    track_path: &'p Path,
+) -> anyhow::Result<Cow<'p, Path>> {
+    debug_assert!(base_path.is_absolute());
+    if track_path.is_relative() {
+        // Leave relative paths as is.
+        if track_path.starts_with(RELATIVE_PATH_PREFIX) {
+            return Ok(Cow::Borrowed(track_path));
+        }
+        bail!("invalid relative path");
+    }
+    debug_assert!(track_path.is_absolute());
+    let relative_path = track_path.strip_prefix(base_path)?;
+    Ok(Cow::Owned(
+        Path::new(RELATIVE_PATH_PREFIX).join(relative_path),
+    ))
 }
 
 #[must_use]
 fn grandparent_path(path: &Path) -> Option<&Path> {
     path.parent().and_then(Path::parent)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn resolve_track_path() {
+        use std::path::Path;
+
+        use crate::track::RELATIVE_PATH_PREFIX;
+
+        let base_path = Path::new("/foo/bar").to_path_buf();
+
+        // Resolvable paths.
+        assert_eq!(
+            super::resolve_track_path(&base_path, Path::new(RELATIVE_PATH_PREFIX)).unwrap(),
+            Path::new(RELATIVE_PATH_PREFIX)
+        );
+        assert_eq!(
+            super::resolve_track_path(&base_path, &base_path).unwrap(),
+            Path::new(RELATIVE_PATH_PREFIX)
+        );
+        assert_eq!(
+            super::resolve_track_path(&base_path, &base_path.join("lorem")).unwrap(),
+            Path::new(RELATIVE_PATH_PREFIX).join("lorem")
+        );
+        assert_eq!(
+            super::resolve_track_path(&base_path, &base_path.join("lorem").join("ipsum")).unwrap(),
+            Path::new(RELATIVE_PATH_PREFIX).join("lorem").join("ipsum")
+        );
+        assert_eq!(
+            super::resolve_track_path(
+                &base_path,
+                &base_path.join(RELATIVE_PATH_PREFIX).join("bar")
+            )
+            .unwrap(),
+            Path::new(RELATIVE_PATH_PREFIX)
+                .join(RELATIVE_PATH_PREFIX)
+                .join("bar")
+        );
+
+        // Unresolvable paths.
+        assert!(super::resolve_track_path(&base_path, &Path::new("/").join("foo")).is_err());
+        assert!(super::resolve_track_path(&base_path, &Path::new("/").join("bar")).is_err());
+        assert!(
+            super::resolve_track_path(&base_path, &Path::new("/").join("bar").join("foo")).is_err()
+        );
+    }
 }

@@ -18,6 +18,7 @@ include = ["README.md", "LICENSES/", "src/"]
 all-features = true
 
 [dependencies]
+anyhow = "1.0.100"
 image = "0.25.9"
 itertools = "0.14.0"
 serde = { version = "1.0.228", features = ["derive"] }
