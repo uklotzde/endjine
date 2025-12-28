@@ -354,13 +354,13 @@ impl PlaylistEntity {
     where
         E: SqliteExecutor<'e>,
     {
-        let mut fetch = sqlx::query_scalar(
+        let mut uuid_results = sqlx::query_scalar(
             r#"SELECT DISTINCT "databaseUuid" FROM "PlaylistEntity" WHERE "listId"=?1 LIMIT 2"#,
         )
         .bind(list_id)
         .fetch(executor());
 
-        let Some(uuid_result) = fetch.next().await else {
+        let Some(uuid_result) = uuid_results.next().await else {
             // Playlist is empty.
             debug_assert_eq!(
                 PlaylistEntity::count_list(executor(), list_id).await.ok(),
@@ -369,7 +369,7 @@ impl PlaylistEntity {
             return Ok(None);
         };
         let uuid = uuid_result?;
-        if fetch.next().await.is_some() {
+        if uuid_results.next().await.is_some() {
             bail!("playlist entries reference multiple database UUIDs");
         }
         Ok(Some(uuid))
@@ -386,7 +386,7 @@ impl PlaylistEntity {
     where
         E: SqliteExecutor<'e>,
     {
-        let mut fetch = sqlx::query_as(
+        let mut last_entity_results = sqlx::query_as(
             r#"SELECT * FROM "PlaylistEntity"
                WHERE "listId"=?1 AND "membershipReference"=MAX("membershipReference")
                DESC LIMIT 2"#,
@@ -394,7 +394,7 @@ impl PlaylistEntity {
         .bind(list_id)
         .fetch(executor());
 
-        let Some(last_entity_result) = fetch.next().await else {
+        let Some(last_entity_result) = last_entity_results.next().await else {
             // Playlist is empty.
             debug_assert_eq!(
                 PlaylistEntity::count_list(executor(), list_id).await.ok(),
@@ -411,7 +411,7 @@ impl PlaylistEntity {
                 next_id = last_entity.next_entity_id
             );
         }
-        if fetch.next().await.is_some() {
+        if last_entity_results.next().await.is_some() {
             bail!("playlist with multiple last entries");
         }
         Ok(Some(last_entity))

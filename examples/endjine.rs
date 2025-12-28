@@ -9,20 +9,61 @@ use std::{
 };
 
 use anyhow::{Result, bail};
+use clap::{Parser, Subcommand};
 use futures_util::StreamExt as _;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
-    AlbumArt, BatchOutcome, Historylist, HistorylistEntity, PerformanceData, Playlist,
+    AlbumArt, BatchOutcome, Historylist, HistorylistEntity, Information, PerformanceData, Playlist,
     PlaylistEntity, PreparelistEntity, Smartlist, Track, batch, open_database,
 };
 
-const DEFAULT_DATABASE_PATH: &str = "m.db";
+const DEFAULT_DB_FILE: &str = "m.db";
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Scan database for consistency (read-only).
+    Scan,
+    /// Import playlist from M3U file.
+    ImportPlaylist(ImportPlaylistArgs),
+    /// Convert album art images from PNG to JPG to save space.
+    ShrinkAlbumArt,
+    /// Purge all album art images for re-import.
+    PurgeAlbumArt,
+    /// Purge cruft from the database.
+    Housekeeping,
+    /// Optimize the database.
+    Optimize,
+}
+
+#[derive(Debug, Parser)]
+struct ImportPlaylistArgs {
+    /// Path in the playlist hierarchy.
+    ///
+    /// Composed from the playlist titles. Path segments are separated by semicolons (';').
+    ///
+    /// Example: "Parent Playlist Title;Child Playlist Title"
+    #[arg(long)]
+    playlist_path: String,
+
+    /// M3U file path.
+    #[arg(long)]
+    m3u_file: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct Args {
+    #[arg(long)]
+    db_file: Option<PathBuf>,
+
+    #[clap(subcommand)]
+    command: Command,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // In Windows, we must request a virtual terminal environment to display colors correctly. This
-    // enables support for the ANSI escape sequences used by `colored`.
+    // In Windows, we must request a virtual terminal environment to display colors correctly.
+    // This enables support for the ANSI escape sequences used by `colored`.
     //
     // <https://github.com/colored-rs/colored/issues/59#issuecomment-954355180>
     #[cfg(windows)]
@@ -30,69 +71,71 @@ async fn main() -> Result<()> {
 
     env_logger::init();
 
-    let database_path = std::env::args()
-        .nth(1)
-        .map_or_else(|| DEFAULT_DATABASE_PATH.into(), Cow::Owned);
+    let Args { db_file, command } = Args::parse();
 
-    let (pool, _info) = match open_database(database_path.as_ref(), None).await {
+    let db_file = db_file.map_or(Cow::Borrowed(Path::new(DEFAULT_DB_FILE)), Cow::Owned);
+
+    let (pool, _info) = match open_database(&db_file, None).await {
         Ok(pool) => {
-            log::info!("Opened database file: {database_path}");
+            log::info!(
+                "Opened database file \"{db_file}\"",
+                db_file = db_file.display()
+            );
             pool
         }
         Err(err) => {
-            log::error!("Failed to open database file {database_path}: {err:#}");
+            log::error!(
+                "Failed to open database file \"{db_file}\": {err:#}",
+                db_file = db_file.display()
+            );
             bail!("aborted");
         }
     };
 
-    ///////////////////////////////////////////////////////////////////
-    // Non-modifying operations.                                     //
-    ///////////////////////////////////////////////////////////////////
+    let info = Information::load(|| &pool).await?;
+    log::info!("Connected database {uuid}", uuid = info.uuid());
 
-    track_scan(&pool).await;
-
-    playlist_scan(&pool).await;
-
-    playlist_entity_scan(&pool).await;
-
-    smartlist_scan(&pool).await;
-
-    preparelist_entity_scan(&pool).await;
-
-    if historylist_scan(&pool).await {
-        historylist_entity_scan(&pool).await;
+    match command {
+        Command::Scan => {
+            track_scan(&pool).await;
+            playlist_scan(&pool).await;
+            playlist_entity_scan(&pool).await;
+            smartlist_scan(&pool).await;
+            preparelist_entity_scan(&pool).await;
+            if historylist_scan(&pool).await {
+                historylist_entity_scan(&pool).await;
+            }
+            performance_data_scan(&pool).await;
+        }
+        Command::ShrinkAlbumArt => {
+            album_art_shrink_images(&pool).await;
+        }
+        Command::PurgeAlbumArt => {
+            album_art_purge_images(&pool).await;
+        }
+        Command::ImportPlaylist(ImportPlaylistArgs {
+            playlist_path,
+            m3u_file,
+        }) => {
+            if let Some(base_path) = Track::base_path(&db_file) {
+                find_track_file_issues(&pool, base_path.to_path_buf()).await;
+            } else {
+                log::warn!("Cannot resolve base path from database path");
+            }
+            log::warn!(
+                "TODO: Import playlist \"{playlist_path}\" from M3U file \"{m3u_file}\"",
+                m3u_file = m3u_file.display()
+            );
+        }
+        Command::Housekeeping => {
+            performance_data_delete_orphaned(&pool).await;
+            track_reset_unused_default_album_art(&pool).await;
+            album_art_delete_unused(&pool).await;
+        }
+        Command::Optimize => {
+            optimize_database(&pool).await;
+        }
     }
-
-    performance_data_scan(&pool).await;
-
-    if let Some(base_path) = Track::base_path(Path::new(database_path.as_ref())) {
-        find_track_file_issues(&pool, base_path.to_path_buf()).await;
-    } else {
-        log::warn!("Cannot resolve base path from database path");
-    }
-
-    // Skip all modifying operations.
-    return Ok(());
-
-    ///////////////////////////////////////////////////////////////////
-    // Modifying operations.                                         //
-    ///////////////////////////////////////////////////////////////////
-
-    // let mut tx = pool.begin().await?;
-    // batch::purge_album_art(&mut tx).await?;
-    // tx.commit().await?;
-
-    performance_data_delete_orphaned(&pool).await;
-
-    track_reset_unused_default_album_art(&pool).await;
-
-    album_art_delete_unused(&pool).await;
-
-    album_art_shrink_images(&pool).await;
-
-    optimize_database(&pool).await;
-
-    log::info!("Finished housekeeping");
 
     Ok(())
 }
@@ -387,6 +430,28 @@ async fn album_art_shrink_images(pool: &SqlitePool) {
         );
         if let Some(err) = aborted_error {
             log::warn!("AlbumArt: Shrinking of images aborted with error: {err}");
+        }
+    }
+}
+
+async fn album_art_purge_images(pool: &SqlitePool) {
+    log::info!("AlbumArt: Purging images...");
+    {
+        // TODO: Extract function.
+        let purge_album_art_result: anyhow::Result<u64> = async move {
+            let mut tx = pool.begin().await?;
+            let purged_count = batch::purge_album_art(&mut tx).await?;
+            tx.commit().await?;
+            Ok(purged_count)
+        }
+        .await;
+        match purge_album_art_result {
+            Ok(purged_count) => {
+                log::info!("AlbumArt: Purged {purged_count} image(s)");
+            }
+            Err(err) => {
+                log::warn!("AlbumArt: Purging of images aborted with error: {err}");
+            }
         }
     }
 }

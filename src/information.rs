@@ -3,6 +3,8 @@
 
 use std::fmt;
 
+use anyhow::bail;
+use futures_util::StreamExt as _;
 use sqlx::{FromRow, SqliteExecutor, types::Uuid};
 
 use crate::DbUuid;
@@ -103,10 +105,39 @@ impl Information {
         }
     }
 
+    pub async fn count_all(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
+        let count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Information""#)
+            .fetch_one(executor)
+            .await?;
+        debug_assert!(count >= 0);
+        Ok(count.cast_unsigned())
+    }
+
+    /// Loads the singular entry.
+    ///
+    /// Fails if the table contains none or more than one entry.
+    pub async fn load<'e, E>(mut executor: impl FnMut() -> E) -> anyhow::Result<Self>
+    where
+        E: SqliteExecutor<'e>,
+    {
+        let mut row_results =
+            sqlx::query_as(r#"SELECT * FROM "Information" LIMIT 2"#).fetch(executor());
+        let Some(row_result) = row_results.next().await else {
+            // Table is empty.
+            debug_assert_eq!(Self::count_all(executor()).await.ok(), Some(0));
+            return Err(sqlx::Error::RowNotFound.into());
+        };
+        let row = row_result?;
+        if row_results.next().await.is_some() {
+            bail!("ambiguous");
+        }
+        Ok(row)
+    }
+
     /// Eagerly loads all [`Information`] at once.
     ///
     /// Unfiltered and in no particular order.
-    pub async fn load_all<'a>(executor: impl SqliteExecutor<'a> + 'a) -> sqlx::Result<Vec<Self>> {
+    pub async fn load_all(executor: impl SqliteExecutor<'_>) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(r#"SELECT * FROM "Information""#)
             .fetch_all(executor)
             .await
@@ -136,22 +167,6 @@ impl Information {
             .bind(uuid)
             .fetch_optional(executor)
             .await
-    }
-
-    // Gets the (unambiguous) database UUID.
-    pub async fn read_db_uuid(executor: impl SqliteExecutor<'_>) -> sqlx::Result<Option<DbUuid>> {
-        let fetched = sqlx::query_scalar(r#"SELECT "uuid" FROM "Information" LIMIT 2"#)
-            .fetch_all(executor)
-            .await?;
-
-        let mut iter = fetched.into_iter();
-        let Some(uuid) = iter.next() else {
-            return Ok(None);
-        };
-        if iter.next().is_some() {
-            return Err(sqlx::Error::Protocol("ambiguous database UUID".into()));
-        }
-        Ok(Some(uuid))
     }
 }
 
