@@ -22,13 +22,13 @@ const DEFAULT_DB_FILE: &str = "m.db";
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Scan database for consistency (read-only).
-    Scan,
+    /// Scan database for consistency and missing or inaccessible track files (read-only).
+    Analyze,
     /// Import playlist from M3U file.
     ImportPlaylist(ImportPlaylistArgs),
     /// Convert album art images from PNG to JPG to save space.
     ShrinkAlbumArt,
-    /// Purge all album art images for re-import.
+    /// Purge all album art for re-import.
     PurgeAlbumArt,
     /// Purge cruft from the database.
     Housekeeping,
@@ -49,6 +49,10 @@ struct ImportPlaylistArgs {
     /// M3U file path.
     #[arg(long)]
     m3u_file: PathBuf,
+
+    /// Absolute base path for resolving relative paths in the M3U file.
+    #[arg(long)]
+    m3u_base_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -96,7 +100,7 @@ async fn main() -> Result<()> {
     log::info!("Connected database {uuid}", uuid = info.uuid());
 
     match command {
-        Command::Scan => {
+        Command::Analyze => {
             track_scan(&pool).await;
             playlist_scan(&pool).await;
             playlist_entity_scan(&pool).await;
@@ -106,6 +110,12 @@ async fn main() -> Result<()> {
                 historylist_entity_scan(&pool).await;
             }
             performance_data_scan(&pool).await;
+            // Find missing or inaccessible track files.
+            if let Some(base_path) = Track::base_path(&db_file) {
+                find_track_file_issues(&pool, base_path.to_path_buf()).await;
+            } else {
+                log::warn!("Cannot resolve base path from database path");
+            }
         }
         Command::ShrinkAlbumArt => {
             album_art_shrink_images(&pool).await;
@@ -116,15 +126,19 @@ async fn main() -> Result<()> {
         Command::ImportPlaylist(ImportPlaylistArgs {
             playlist_path,
             m3u_file,
+            m3u_base_path,
         }) => {
-            if let Some(base_path) = Track::base_path(&db_file) {
-                find_track_file_issues(&pool, base_path.to_path_buf()).await;
-            } else {
-                log::warn!("Cannot resolve base path from database path");
-            }
+            let m3u_base_path = match m3u_base_path.map_or_else(std::env::current_dir, Ok) {
+                Ok(ok) => ok,
+                Err(err) => {
+                    log::warn!("Failed to determine the current working directory: {err:#}");
+                    return Ok(());
+                }
+            };
             log::warn!(
-                "TODO: Import playlist \"{playlist_path}\" from M3U file \"{m3u_file}\"",
-                m3u_file = m3u_file.display()
+                "TODO: Import playlist \"{playlist_path}\" from M3U file \"{m3u_file}\" with base path \"{m3u_base_path}\"",
+                m3u_file = m3u_file.display(),
+                m3u_base_path = m3u_base_path.display(),
             );
         }
         Command::Housekeeping => {
