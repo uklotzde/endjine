@@ -52,6 +52,8 @@ impl fmt::Display for SchemaVersion {
 crate::db_id!(InformationId);
 
 /// Database information.
+///
+/// The corresponding table contains a single row with information about the local database.
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct Information {

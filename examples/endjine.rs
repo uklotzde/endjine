@@ -133,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
                 log::info!("Track base path: {}", track_base_path.display());
                 match import_m3u_playlist(
                     &pool,
-                    info.uuid(),
+                    *info.uuid(),
                     track_base_path,
                     &playlist_path,
                     &m3u_file,
@@ -522,7 +522,7 @@ fn import_m3u_playlist_track_paths(
 
 async fn import_m3u_playlist(
     pool: &SqlitePool,
-    database_uuid: &DbUuid,
+    local_database_uuid: DbUuid,
     track_base_path: &Path,
     playlist_path: &str,
     m3u_file: &Path,
@@ -555,7 +555,7 @@ async fn import_m3u_playlist(
                             track_path = track_path.display()
                         );
                     };
-                    PlaylistTrackRef::new(track_ref, *database_uuid)
+                    PlaylistTrackRef::new(track_ref, local_database_uuid)
                 })
                 .with_context(|| {
                     format!(

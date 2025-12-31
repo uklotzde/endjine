@@ -535,7 +535,7 @@ impl PlaylistTrackRef {
                 track_id: id,
                 database_uuid: local_database_uuid,
             }),
-            _ => bail!("invalid track header {track_ref:?}"),
+            _ => bail!("invalid track reference {track_ref:?}"),
         }
     }
 }
