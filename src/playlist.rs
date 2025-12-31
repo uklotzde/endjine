@@ -11,7 +11,7 @@ use futures_util::{StreamExt as _, stream::BoxStream};
 use itertools::Itertools;
 use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime};
 
-use crate::{DbUuid, Track, TrackId, resolve_track_path};
+use crate::{DbUuid, Track, TrackId, TrackRef, resolve_track_path};
 
 crate::db_id!(PlaylistId);
 
@@ -37,7 +37,7 @@ pub struct Playlist {
 }
 
 impl Playlist {
-    /// Fetches all [`Playlist`]s asynchronously.
+    /// Fetches all [`Playlist`]s.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
@@ -47,7 +47,7 @@ impl Playlist {
         sqlx::query_as(r#"SELECT * FROM "Playlist" ORDER BY "id""#).fetch(executor)
     }
 
-    /// Fetches all empty [`Playlist`]s without children asynchronously.
+    /// Fetches all empty [`Playlist`]s without children.
     ///
     /// In no particular order.
     #[must_use]
@@ -63,6 +63,32 @@ impl Playlist {
         .fetch(executor)
     }
 
+    /// Deletes a playlist from the database.
+    pub async fn delete(&self, executor: impl SqliteExecutor<'_>) -> sqlx::Result<bool> {
+        sqlx::query(r#"DELETE FROM "Playlist" WHERE "id"=?1"#)
+            .bind(self.id)
+            .execute(executor)
+            .await
+            .map(|result| {
+                debug_assert!(result.rows_affected() <= 1);
+                result.rows_affected() > 0
+            })
+    }
+
+    /// Deletes all empty [`Playlist`]s without children.
+    pub async fn delete_all_empty_without_children(
+        executor: impl SqliteExecutor<'_>,
+    ) -> sqlx::Result<u64> {
+        sqlx::query(
+            r#"DELETE FROM "Playlist"
+                WHERE "id" NOT IN (SELECT "listId" FROM "PlaylistEntity")
+                AND "id" NOT IN (SELECT "parentListId" FROM "Playlist")"#,
+        )
+        .execute(executor)
+        .await
+        .map(|result| result.rows_affected())
+    }
+
     /// Loads a single [`Playlist`] by ID.
     ///
     /// Returns `Ok(None)` if the requested [`Playlist`] has not been found.
@@ -76,6 +102,22 @@ impl Playlist {
             .await
     }
 
+    pub async fn find_id_by_path(
+        executor: impl SqliteExecutor<'_>,
+        path: &str,
+    ) -> sqlx::Result<Option<PlaylistId>> {
+        let path = if path.ends_with(PLAYLIST_PATH_SEGMENT_SEPARATOR) {
+            Cow::Borrowed(path)
+        } else {
+            // Terminate the path.
+            Cow::Owned([path, PLAYLIST_PATH_SEGMENT_SEPARATOR].concat())
+        };
+        sqlx::query_scalar(r#"SELECT "id" FROM "PlaylistPath" WHERE "path"=?1"#)
+            .bind(path)
+            .fetch_optional(executor)
+            .await
+    }
+
     /// Adds tracks to a playlist.
     ///
     /// This method appends tracks to the end of the playlist.
@@ -84,8 +126,7 @@ impl Playlist {
     pub async fn add_tracks<'e, E>(
         mut executor: impl FnMut() -> E,
         id: PlaylistId,
-        db_uuid: DbUuid,
-        track_ids: impl IntoIterator<Item = TrackId>,
+        track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
     ) -> anyhow::Result<()>
     where
         E: SqliteExecutor<'e>,
@@ -102,7 +143,11 @@ impl Playlist {
         );
 
         // Append each track as a new playlist entry.
-        for track_id in track_ids {
+        for track_ref in track_refs {
+            let PlaylistTrackRef {
+                track_id,
+                database_uuid,
+            } = track_ref;
             let result = sqlx::query(
                 r#"INSERT INTO "PlaylistEntity"
                    ("listId", "trackId", "databaseUuid", "nextEntityId", "membershipReference")
@@ -110,7 +155,7 @@ impl Playlist {
             )
             .bind(id)
             .bind(track_id)
-            .bind(db_uuid)
+            .bind(database_uuid)
             .bind(PlaylistEntityId::INVALID_ZERO)
             .bind(next_membership_ref)
             .execute(executor())
@@ -154,17 +199,19 @@ impl Playlist {
             .map(|track_path| resolve_track_path(base_path, track_path).map(Cow::into_owned))
             .collect::<anyhow::Result<Vec<_>>>()?;
         Ok(async move {
-            let mut track_ids = Vec::with_capacity(track_paths.len());
+            let mut track_refs = Vec::with_capacity(track_paths.len());
             for track_path in track_paths {
-                let Some(track_id) = Track::find_id_by_path(executor(), &track_path).await? else {
+                let Some(track_ref) = Track::find_ref_by_path(executor(), &track_path).await?
+                else {
                     bail!(
                         "unknown track path \"{track_path}\"",
                         track_path = track_path.display()
                     );
                 };
-                track_ids.push(track_id);
+                let track_ref = PlaylistTrackRef::new(track_ref, db_uuid)?;
+                track_refs.push(track_ref);
             }
-            Self::add_tracks(executor, id, db_uuid, track_ids).await
+            Self::add_tracks(executor, id, track_refs).await
         })
     }
 
@@ -177,37 +224,39 @@ impl Playlist {
     pub async fn replace_tracks<'e, E>(
         mut executor: impl FnMut() -> E,
         id: PlaylistId,
-        db_uuid: DbUuid,
-        track_ids: impl IntoIterator<Item = TrackId>,
+        track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
     ) -> anyhow::Result<()>
     where
         E: SqliteExecutor<'e>,
     {
         let mut existing_entries = PlaylistEntity::load_list(executor(), id).await?.into_iter();
-        let mut track_ids = track_ids.into_iter();
+        let mut track_refs = track_refs.into_iter();
         let mut last_id_membership_reference = None;
-        while let Some(next_track_id) = track_ids.next() {
+        while let Some(next_track_ref) = track_refs.next() {
             let Some(next_entry) = existing_entries.next() else {
                 // All existing entries have been reused.
                 // The remaining tracks need to be added as new entries.
                 return Self::add_tracks(
                     executor,
                     id,
-                    db_uuid,
-                    std::iter::once(next_track_id).chain(track_ids),
+                    std::iter::once(next_track_ref).chain(track_refs),
                 )
                 .await;
             };
 
             // Update entry.
-            if next_track_id != next_entry.track_id || db_uuid != next_entry.database_uuid {
+            if next_track_ref != next_entry.track_ref() {
+                let PlaylistTrackRef {
+                    track_id,
+                    database_uuid,
+                } = next_track_ref;
                 sqlx::query(
                     r#"UPDATE "PlaylistEntity"
                     SET "trackId"=?1, "databaseUuid"=?2
                     WHERE "id"=?3"#,
                 )
-                .bind(next_track_id)
-                .bind(db_uuid)
+                .bind(track_id)
+                .bind(database_uuid)
                 .bind(next_entry.id)
                 .execute(executor())
                 .await?;
@@ -276,7 +325,20 @@ pub struct PlaylistEntity {
 }
 
 impl PlaylistEntity {
-    /// Fetches all [`PlaylistEntity`]s asynchronously.
+    #[must_use]
+    pub const fn track_ref(&self) -> PlaylistTrackRef {
+        let Self {
+            track_id,
+            database_uuid,
+            ..
+        } = self;
+        PlaylistTrackRef {
+            track_id: *track_id,
+            database_uuid: *database_uuid,
+        }
+    }
+
+    /// Fetches all [`PlaylistEntity`]s.
     ///
     /// Unfiltered and in no particular order.
     #[must_use]
@@ -286,7 +348,7 @@ impl PlaylistEntity {
         sqlx::query_as(r#"SELECT * FROM "PlaylistEntity" ORDER BY "id""#).fetch(executor)
     }
 
-    /// Fetches all entries of a [`Playlist`] asynchronously.
+    /// Fetches all entries of a [`Playlist`].
     ///
     /// Ordered by the canonical position in the playlist.
     #[must_use]
@@ -295,15 +357,13 @@ impl PlaylistEntity {
         list_id: PlaylistId,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(
-            r#"SELECT * FROM "PlaylistEntity"
-                WHERE "listId"=?1"
-                ORDERED BY "membershipReference""#,
+            r#"SELECT * FROM "PlaylistEntity" WHERE "listId"=?1 ORDER BY "membershipReference""#,
         )
         .bind(list_id)
         .fetch(executor)
     }
 
-    /// Loads all entries of a [`Playlist`] asynchronously.
+    /// Loads all entries of a [`Playlist`].
     ///
     /// Ordered by the canonical position in the playlist.
     pub async fn load_list(
@@ -311,16 +371,14 @@ impl PlaylistEntity {
         list_id: PlaylistId,
     ) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
-            r#"SELECT * FROM "PlaylistEntity"
-                WHERE "listId"=?1"
-                ORDERED BY "membershipReference""#,
+            r#"SELECT * FROM "PlaylistEntity" WHERE "listId"=?1 ORDER BY "membershipReference""#,
         )
         .bind(list_id)
         .fetch_all(executor)
         .await
     }
 
-    /// Deletes all entries of a [`Playlist`] asynchronously.
+    /// Deletes all entries of a [`Playlist`].
     pub async fn delete_list(
         executor: impl SqliteExecutor<'_>,
         list_id: PlaylistId,
@@ -388,8 +446,11 @@ impl PlaylistEntity {
     {
         let mut last_entity_results = sqlx::query_as(
             r#"SELECT * FROM "PlaylistEntity"
-               WHERE "listId"=?1 AND "membershipReference"=MAX("membershipReference")
-               DESC LIMIT 2"#,
+               WHERE "listId"=?1
+               GROUP BY "membershipReference"
+               HAVING "membershipReference"=MAX("membershipReference")
+               ORDER BY "membershipReference" DESC
+               LIMIT 2"#,
         )
         .bind(list_id)
         .fetch(executor());
@@ -428,6 +489,54 @@ impl PlaylistEntity {
             .bind(id)
             .fetch_optional(executor)
             .await
+    }
+
+    /// Deletes all rows from external databases.
+    pub async fn delete_all_external(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
+        sqlx::query(
+            r#"DELETE FROM "PlaylistEntity"
+                WHERE "databaseUuid" NOT IN (SELECT "uuid" FROM "Information")"#,
+        )
+        .execute(executor)
+        .await
+        .map(|result| result.rows_affected())
+    }
+}
+
+/// References a track with(-in) its origin database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
+#[sqlx(rename_all = "camelCase")]
+pub struct PlaylistTrackRef {
+    pub track_id: TrackId,
+    pub database_uuid: DbUuid,
+}
+
+impl PlaylistTrackRef {
+    pub fn new(track_ref: TrackRef, local_database_uuid: DbUuid) -> anyhow::Result<Self> {
+        match track_ref {
+            TrackRef {
+                id,
+                origin_database_uuid: Some(origin_database_uuid),
+                origin_track_id: Some(origin_track_id),
+            } => {
+                if (origin_database_uuid == local_database_uuid) && id != origin_track_id {
+                    bail!("mismatching track ids");
+                }
+                Ok(Self {
+                    track_id: origin_track_id,
+                    database_uuid: origin_database_uuid,
+                })
+            }
+            TrackRef {
+                id,
+                origin_database_uuid: None,
+                origin_track_id: None,
+            } => Ok(Self {
+                track_id: id,
+                database_uuid: local_database_uuid,
+            }),
+            _ => bail!("invalid track header {track_ref:?}"),
+        }
     }
 }
 

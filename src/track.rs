@@ -6,7 +6,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::bail;
 use futures_util::stream::BoxStream;
 use sqlx::{FromRow, SqliteExecutor};
 
@@ -61,10 +60,19 @@ pub struct Track {
     pub uri: Option<String>,
     pub is_beat_grid_locked: bool,
     pub origin_database_uuid: Option<DbUuid>,
-    pub origin_track_id: Option<i64>,
+    pub origin_track_id: Option<TrackId>,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
     pub last_edit_time: UnixTimestamp,
+}
+
+/// References a track within the local and its origin database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
+#[sqlx(rename_all = "camelCase")]
+pub struct TrackRef {
+    pub id: TrackId,
+    pub origin_database_uuid: Option<DbUuid>,
+    pub origin_track_id: Option<TrackId>,
 }
 
 impl Track {
@@ -123,23 +131,25 @@ impl Track {
         Ok(result.rows_affected())
     }
 
-    /// Finds the [`TrackId`] for the given path.
+    /// Finds the [`TrackRef`] for the given path.
     ///
     /// The path must be relative and match the path in the database.
-    pub async fn find_id_by_path(
+    pub async fn find_ref_by_path(
         executor: impl SqliteExecutor<'_>,
         path: &Path,
-    ) -> sqlx::Result<Option<TrackId>> {
+    ) -> sqlx::Result<Option<TrackRef>> {
         debug_assert!(path.is_relative());
-        debug_assert!(path.starts_with(RELATIVE_PATH_PREFIX));
-        sqlx::query_scalar(r#"SELECT "id" FROM "Track" WHERE "path"=?1"#)
-            .bind(path.display().to_string())
-            .fetch_optional(executor)
-            .await
+        debug_assert!(path.starts_with(RELATIVE_TRACK_PATH_PREFIX));
+        sqlx::query_as(
+            r#"SELECT "id","originDatabaseUuid","originTrackId" FROM "Track" WHERE "path"=?1"#,
+        )
+        .bind(path.display().to_string())
+        .fetch_optional(executor)
+        .await
     }
 }
 
-const RELATIVE_PATH_PREFIX: &str = "..";
+pub const RELATIVE_TRACK_PATH_PREFIX: &str = "..";
 
 pub fn resolve_track_path<'p>(
     base_path: &Path,
@@ -147,17 +157,18 @@ pub fn resolve_track_path<'p>(
 ) -> anyhow::Result<Cow<'p, Path>> {
     debug_assert!(base_path.is_absolute());
     if track_path.is_relative() {
-        // Leave relative paths as is.
-        if track_path.starts_with(RELATIVE_PATH_PREFIX) {
-            return Ok(Cow::Borrowed(track_path));
-        }
-        bail!("invalid relative path");
+        let resolved_path = if track_path.starts_with(RELATIVE_TRACK_PATH_PREFIX) {
+            // Leave relative paths as is.
+            Cow::Borrowed(track_path)
+        } else {
+            Cow::Owned(Path::new(RELATIVE_TRACK_PATH_PREFIX).join(track_path))
+        };
+        return Ok(resolved_path);
     }
     debug_assert!(track_path.is_absolute());
     let relative_path = track_path.strip_prefix(base_path)?;
-    Ok(Cow::Owned(
-        Path::new(RELATIVE_PATH_PREFIX).join(relative_path),
-    ))
+    let resolved_path = Path::new(RELATIVE_TRACK_PATH_PREFIX).join(relative_path);
+    Ok(Cow::Owned(resolved_path))
 }
 
 #[must_use]
@@ -172,35 +183,37 @@ mod tests {
     fn resolve_track_path() {
         use std::path::Path;
 
-        use crate::track::RELATIVE_PATH_PREFIX;
+        use crate::track::RELATIVE_TRACK_PATH_PREFIX;
 
         let base_path = Path::new("/foo/bar").to_path_buf();
 
         // Resolvable paths.
         assert_eq!(
-            super::resolve_track_path(&base_path, Path::new(RELATIVE_PATH_PREFIX)).unwrap(),
-            Path::new(RELATIVE_PATH_PREFIX)
+            super::resolve_track_path(&base_path, Path::new(RELATIVE_TRACK_PATH_PREFIX)).unwrap(),
+            Path::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
             super::resolve_track_path(&base_path, &base_path).unwrap(),
-            Path::new(RELATIVE_PATH_PREFIX)
+            Path::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
             super::resolve_track_path(&base_path, &base_path.join("lorem")).unwrap(),
-            Path::new(RELATIVE_PATH_PREFIX).join("lorem")
+            Path::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem")
         );
         assert_eq!(
             super::resolve_track_path(&base_path, &base_path.join("lorem").join("ipsum")).unwrap(),
-            Path::new(RELATIVE_PATH_PREFIX).join("lorem").join("ipsum")
+            Path::new(RELATIVE_TRACK_PATH_PREFIX)
+                .join("lorem")
+                .join("ipsum")
         );
         assert_eq!(
             super::resolve_track_path(
                 &base_path,
-                &base_path.join(RELATIVE_PATH_PREFIX).join("bar")
+                &base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar")
             )
             .unwrap(),
-            Path::new(RELATIVE_PATH_PREFIX)
-                .join(RELATIVE_PATH_PREFIX)
+            Path::new(RELATIVE_TRACK_PATH_PREFIX)
+                .join(RELATIVE_TRACK_PATH_PREFIX)
                 .join("bar")
         );
 

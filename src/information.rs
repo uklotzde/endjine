@@ -5,7 +5,7 @@ use std::fmt;
 
 use anyhow::bail;
 use futures_util::StreamExt as _;
-use sqlx::{FromRow, SqliteExecutor, types::Uuid};
+use sqlx::{FromRow, SqliteExecutor};
 
 use crate::DbUuid;
 
@@ -75,8 +75,8 @@ impl Information {
     }
 
     #[must_use]
-    pub const fn uuid(&self) -> &Uuid {
-        self.uuid.as_uuid()
+    pub const fn uuid(&self) -> &DbUuid {
+        &self.uuid
     }
 
     /// Gets the schema version.

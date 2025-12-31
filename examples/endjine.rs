@@ -8,14 +8,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand};
-use futures_util::StreamExt as _;
+use futures_util::{StreamExt as _, TryStreamExt, stream::FuturesOrdered};
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
-    AlbumArt, BatchOutcome, Historylist, HistorylistEntity, Information, PerformanceData, Playlist,
-    PlaylistEntity, PreparelistEntity, Smartlist, Track, batch, open_database,
+    AlbumArt, BatchOutcome, DbUuid, Historylist, HistorylistEntity, Information, PerformanceData,
+    Playlist, PlaylistEntity, PlaylistTrackRef, PreparelistEntity, RELATIVE_TRACK_PATH_PREFIX,
+    Smartlist, Track, batch, open_database, resolve_track_path,
 };
 
 const DEFAULT_DB_FILE: &str = "m.db";
@@ -65,7 +66,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // In Windows, we must request a virtual terminal environment to display colors correctly.
     // This enables support for the ANSI escape sequences used by `colored`.
     //
@@ -97,7 +98,7 @@ async fn main() -> Result<()> {
     };
 
     let info = Information::load(|| &pool).await?;
-    log::info!("Connected database {uuid}", uuid = info.uuid());
+    log::info!("Database UUID: {uuid}", uuid = info.uuid());
 
     match command {
         Command::Analyze => {
@@ -128,23 +129,43 @@ async fn main() -> Result<()> {
             m3u_file,
             m3u_base_path,
         }) => {
-            let m3u_base_path = match m3u_base_path.map_or_else(std::env::current_dir, Ok) {
-                Ok(ok) => ok,
-                Err(err) => {
-                    log::warn!("Failed to determine the current working directory: {err:#}");
-                    return Ok(());
+            if let Some(track_base_path) = Track::base_path(&db_file) {
+                log::info!("Track base path: {}", track_base_path.display());
+                match import_m3u_playlist(
+                    &pool,
+                    info.uuid(),
+                    track_base_path,
+                    &playlist_path,
+                    &m3u_file,
+                    m3u_base_path.as_deref(),
+                )
+                .await
+                {
+                    Ok(()) => (),
+                    Err(err) => {
+                        log::error!(
+                            "Failed to import M3U playlist from \"{m3u_file}\": {err:#}",
+                            m3u_file = m3u_file.display()
+                        );
+                    }
                 }
-            };
-            log::warn!(
-                "TODO: Import playlist \"{playlist_path}\" from M3U file \"{m3u_file}\" with base path \"{m3u_base_path}\"",
-                m3u_file = m3u_file.display(),
-                m3u_base_path = m3u_base_path.display(),
-            );
+            } else {
+                log::warn!("Cannot resolve base path from database path");
+            }
         }
         Command::Housekeeping => {
             performance_data_delete_orphaned(&pool).await;
             track_reset_unused_default_album_art(&pool).await;
             album_art_delete_unused(&pool).await;
+            // TODO
+            let playlist_entry_count = PlaylistEntity::delete_all_external(&pool).await?;
+            if playlist_entry_count > 0 {
+                log::info!("Deleted {playlist_entry_count} playlist entry(-ies)");
+            }
+            let playlist_count = Playlist::delete_all_empty_without_children(&pool).await?;
+            if playlist_count > 0 {
+                log::info!("Deleted {playlist_count} playlist(s)");
+            }
         }
         Command::Optimize => {
             optimize_database(&pool).await;
@@ -468,6 +489,89 @@ async fn album_art_purge_images(pool: &SqlitePool) {
             }
         }
     }
+}
+
+fn import_m3u_playlist_track_paths(
+    file_path: &Path,
+    base_path: Option<&Path>,
+) -> anyhow::Result<Vec<PathBuf>> {
+    let reader = m3u::Reader::open(file_path)?;
+    let base_path = base_path.unwrap_or_else(|| Path::new(RELATIVE_TRACK_PATH_PREFIX));
+    let mut reader = reader;
+    reader
+        .entries()
+        .map(|entry_result| {
+            entry_result.map_err(Into::into).and_then(|entry| {
+                let mut path = match entry {
+                    m3u::Entry::Path(path) => path,
+                    m3u::Entry::Url(url) => match url.to_file_path() {
+                        Ok(path) => path,
+                        Err(()) => {
+                            bail!("URL \"{url}\" is not a local file path");
+                        }
+                    },
+                };
+                if path.is_relative() {
+                    path = base_path.join(path);
+                }
+                Ok(path)
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
+async fn import_m3u_playlist(
+    pool: &SqlitePool,
+    database_uuid: &DbUuid,
+    track_base_path: &Path,
+    playlist_path: &str,
+    m3u_file: &Path,
+    m3u_base_path: Option<&Path>,
+) -> anyhow::Result<()> {
+    let imported_track_paths = import_m3u_playlist_track_paths(m3u_file, m3u_base_path)?;
+
+    log::info!(
+        "Resolving id(s) of {track_count} track(s)",
+        track_count = imported_track_paths.len()
+    );
+
+    let track_refs_fut = imported_track_paths
+        .into_iter()
+        .map(|track_path: PathBuf| {
+            resolve_track_path(track_base_path, &track_path)
+                .map(Cow::into_owned)
+                .map(|track_path| async move {
+                    let track_ref = Track::find_ref_by_path(pool, &track_path)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "find id of track path \"{track_path}\"",
+                                track_path = track_path.display()
+                            )
+                        })?;
+                    let Some(track_ref) = track_ref else {
+                        bail!(
+                            "unknown track path \"{track_path}\"",
+                            track_path = track_path.display()
+                        );
+                    };
+                    PlaylistTrackRef::new(track_ref, *database_uuid)
+                })
+                .with_context(|| {
+                    format!(
+                        "resolve track path \"{track_path}\"",
+                        track_path = track_path.display(),
+                    )
+                })
+        })
+        .collect::<anyhow::Result<FuturesOrdered<_>>>()?;
+    let track_refs = track_refs_fut.try_collect::<Vec<_>>().await?;
+    let Some(playlist_id) = Playlist::find_id_by_path(pool, playlist_path).await? else {
+        // TODO: Create new playlist.
+        log::warn!("Playlist \"{playlist_path}\" not found");
+        return Ok(());
+    };
+    Playlist::replace_tracks(|| pool, playlist_id, track_refs).await
 }
 
 async fn optimize_database(pool: &SqlitePool) {
