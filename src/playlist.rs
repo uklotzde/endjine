@@ -6,10 +6,15 @@ use std::{
     path::Path,
 };
 
-use anyhow::bail;
-use futures_util::{StreamExt as _, stream::BoxStream};
+use anyhow::{Context as _, bail};
+use futures_util::{
+    StreamExt as _, TryStreamExt as _,
+    stream::{BoxStream, FuturesOrdered},
+};
 use itertools::Itertools;
-use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime};
+use sqlx::{
+    FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
+};
 
 use crate::{DbUuid, Track, TrackId, TrackRef, resolve_track_path};
 
@@ -118,12 +123,10 @@ impl Playlist {
             .await
     }
 
-    /// Adds tracks to a playlist.
-    ///
-    /// This method appends tracks to the end of the playlist.
+    /// Appends tracks to a playlist.
     ///
     /// Must run within a transaction in isolation.
-    pub async fn add_tracks<'e, E>(
+    pub async fn append_tracks<'e, E>(
         mut executor: impl FnMut() -> E,
         id: PlaylistId,
         track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
@@ -181,43 +184,9 @@ impl Playlist {
         Ok(())
     }
 
-    /// Adds tracks by path to a playlist.
-    ///
-    /// See also: [`add_tracks()`](Self::add_tracks).
-    pub fn add_tracks_by_path<'e, 'p, E>(
-        mut executor: impl FnMut() -> E + 'e,
-        id: PlaylistId,
-        db_uuid: DbUuid,
-        base_path: &Path,
-        track_paths: impl IntoIterator<Item = &'p Path>,
-    ) -> anyhow::Result<impl Future<Output = anyhow::Result<()>> + 'e>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let track_paths = track_paths
-            .into_iter()
-            .map(|track_path| resolve_track_path(base_path, track_path).map(Cow::into_owned))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(async move {
-            let mut track_refs = Vec::with_capacity(track_paths.len());
-            for track_path in track_paths {
-                let Some(track_ref) = Track::find_ref_by_path(executor(), &track_path).await?
-                else {
-                    bail!(
-                        "unknown track path \"{track_path}\"",
-                        track_path = track_path.display()
-                    );
-                };
-                let track_ref = PlaylistTrackRef::new(track_ref, db_uuid)?;
-                track_refs.push(track_ref);
-            }
-            Self::add_tracks(executor, id, track_refs).await
-        })
-    }
-
     /// Replaces all tracks in a playlist.
     ///
-    /// This method replaces all existing tracks in the playlist with the provided track IDs.
+    /// This method replaces all existing tracks in the playlist.
     /// It reuses existing entries where possible.
     ///
     /// Must run within a transaction in isolation.
@@ -236,7 +205,7 @@ impl Playlist {
             let Some(next_entry) = existing_entries.next() else {
                 // All existing entries have been reused.
                 // The remaining tracks need to be added as new entries.
-                return Self::add_tracks(
+                return Self::append_tracks(
                     executor,
                     id,
                     std::iter::once(next_track_ref).chain(track_refs),
@@ -305,6 +274,44 @@ impl Playlist {
 
         Ok(())
     }
+}
+
+pub async fn resolve_playlist_track_refs_from_paths<'p>(
+    pool: &SqlitePool,
+    local_database_uuid: DbUuid,
+    base_path: &Path,
+    track_paths: impl IntoIterator<Item = &'p Path>,
+) -> anyhow::Result<Vec<PlaylistTrackRef>> {
+    let track_refs_fut = track_paths
+        .into_iter()
+        .map(|track_path| {
+            resolve_track_path(base_path, track_path)
+                .map(|track_path| async move {
+                    let track_ref = Track::find_ref_by_path(pool, &track_path)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "find reference of track path \"{track_path}\"",
+                                track_path = track_path.display()
+                            )
+                        })?;
+                    let Some(track_ref) = track_ref else {
+                        bail!(
+                            "unknown track path \"{track_path}\"",
+                            track_path = track_path.display()
+                        );
+                    };
+                    PlaylistTrackRef::new(track_ref, local_database_uuid)
+                })
+                .with_context(|| {
+                    format!(
+                        "resolve track path \"{track_path}\"",
+                        track_path = track_path.display(),
+                    )
+                })
+        })
+        .collect::<anyhow::Result<FuturesOrdered<_>>>()?;
+    track_refs_fut.try_collect::<Vec<_>>().await
 }
 
 crate::db_id!(PlaylistEntityId);

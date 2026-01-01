@@ -38,7 +38,7 @@ pub use self::playlist::{
     PLAYLIST_PATH_SEGMENT_SEPARATOR, Playlist, PlaylistAllChildren, PlaylistAllChildrenId,
     PlaylistAllParent, PlaylistAllParentId, PlaylistEntity, PlaylistEntityId, PlaylistId,
     PlaylistPath, PlaylistPathId, PlaylistTrackRef, concat_playlist_path_segments_to_string,
-    is_valid_playlist_path_segment,
+    is_valid_playlist_path_segment, resolve_playlist_track_refs_from_paths,
 };
 
 mod preparelist;

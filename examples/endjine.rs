@@ -8,15 +8,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context as _, bail};
-use clap::{Parser, Subcommand};
-use futures_util::{StreamExt as _, TryStreamExt, stream::FuturesOrdered};
+use anyhow::bail;
+use clap::{Parser, Subcommand, ValueEnum};
+use futures_util::StreamExt as _;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
     AlbumArt, BatchOutcome, DbUuid, Historylist, HistorylistEntity, Information, PerformanceData,
-    Playlist, PlaylistEntity, PlaylistTrackRef, PreparelistEntity, RELATIVE_TRACK_PATH_PREFIX,
-    Smartlist, Track, batch, open_database, resolve_track_path,
+    Playlist, PlaylistEntity, PreparelistEntity, RELATIVE_TRACK_PATH_PREFIX, Smartlist, Track,
+    batch, open_database, resolve_playlist_track_refs_from_paths,
 };
 
 const DEFAULT_DB_FILE: &str = "m.db";
@@ -37,6 +37,15 @@ enum Command {
     Optimize,
 }
 
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+enum ImportPlaylistMode {
+    /// Appends tracks to a playlist.
+    #[default]
+    Append,
+    /// Replaces all tracks of a playlist.
+    Replace,
+}
+
 #[derive(Debug, Parser)]
 struct ImportPlaylistArgs {
     /// Path in the playlist hierarchy.
@@ -46,6 +55,10 @@ struct ImportPlaylistArgs {
     /// Example: "Parent Playlist Title;Child Playlist Title"
     #[arg(long)]
     playlist_path: String,
+
+    /// Controls how tracks are added to the playlist.
+    #[arg(long)]
+    mode: Option<ImportPlaylistMode>,
 
     /// M3U file path.
     #[arg(long)]
@@ -126,9 +139,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::ImportPlaylist(ImportPlaylistArgs {
             playlist_path,
+            mode,
             m3u_file,
             m3u_base_path,
         }) => {
+            let mode = mode.unwrap_or_default();
             if let Some(track_base_path) = Track::base_path(&db_file) {
                 log::info!("Track base path: {}", track_base_path.display());
                 match import_m3u_playlist(
@@ -136,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
                     *info.uuid(),
                     track_base_path,
                     &playlist_path,
+                    mode,
                     &m3u_file,
                     m3u_base_path.as_deref(),
                 )
@@ -525,53 +541,37 @@ async fn import_m3u_playlist(
     local_database_uuid: DbUuid,
     track_base_path: &Path,
     playlist_path: &str,
+    mode: ImportPlaylistMode,
     m3u_file: &Path,
     m3u_base_path: Option<&Path>,
 ) -> anyhow::Result<()> {
     let imported_track_paths = import_m3u_playlist_track_paths(m3u_file, m3u_base_path)?;
 
     log::info!(
-        "Resolving id(s) of {track_count} track(s)",
+        "Resolving paths of {track_count} track(s)",
         track_count = imported_track_paths.len()
     );
 
-    let track_refs_fut = imported_track_paths
-        .into_iter()
-        .map(|track_path: PathBuf| {
-            resolve_track_path(track_base_path, &track_path)
-                .map(Cow::into_owned)
-                .map(|track_path| async move {
-                    let track_ref = Track::find_ref_by_path(pool, &track_path)
-                        .await
-                        .with_context(|| {
-                            format!(
-                                "find id of track path \"{track_path}\"",
-                                track_path = track_path.display()
-                            )
-                        })?;
-                    let Some(track_ref) = track_ref else {
-                        bail!(
-                            "unknown track path \"{track_path}\"",
-                            track_path = track_path.display()
-                        );
-                    };
-                    PlaylistTrackRef::new(track_ref, local_database_uuid)
-                })
-                .with_context(|| {
-                    format!(
-                        "resolve track path \"{track_path}\"",
-                        track_path = track_path.display(),
-                    )
-                })
-        })
-        .collect::<anyhow::Result<FuturesOrdered<_>>>()?;
-    let track_refs = track_refs_fut.try_collect::<Vec<_>>().await?;
+    let track_refs = resolve_playlist_track_refs_from_paths(
+        pool,
+        local_database_uuid,
+        track_base_path,
+        imported_track_paths.iter().map(PathBuf::as_path),
+    )
+    .await?;
     let Some(playlist_id) = Playlist::find_id_by_path(pool, playlist_path).await? else {
         // TODO: Create new playlist.
         log::warn!("Playlist \"{playlist_path}\" not found");
         return Ok(());
     };
-    Playlist::replace_tracks(|| pool, playlist_id, track_refs).await
+    match mode {
+        ImportPlaylistMode::Append => {
+            Playlist::append_tracks(|| pool, playlist_id, track_refs).await
+        }
+        ImportPlaylistMode::Replace => {
+            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await
+        }
+    }
 }
 
 async fn optimize_database(pool: &SqlitePool) {
