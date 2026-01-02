@@ -7,6 +7,7 @@ use std::{
 };
 
 use futures_util::stream::BoxStream;
+use relative_path::RelativePath;
 use sqlx::{FromRow, SqliteExecutor};
 
 use crate::{AlbumArtId, DbUuid, UnixTimestamp};
@@ -94,7 +95,9 @@ impl Track {
     /// The resulting path is not canonicalized.
     #[must_use]
     pub fn file_path(&self, base_path: &Path) -> Option<PathBuf> {
-        self.path.as_ref().map(|path| base_path.join(path))
+        self.path
+            .as_ref()
+            .map(|path| RelativePath::new(path).to_path(base_path))
     }
 
     /// Fetches all [`Track`]s asynchronously.

@@ -21,6 +21,7 @@ all-features = true
 anyhow = "1.0.100"
 image = "0.25.9"
 itertools = "0.14.0"
+relative-path = "2.0.1"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
 
