@@ -581,21 +581,28 @@ async fn import_m3u_playlist(
 
     // Modify playlist within a transaction.
     let tx = pool.begin().await?;
-    match mode {
+    let ignored_track_refs = match mode {
         ImportPlaylistMode::Append => {
             log::info!(
                 "Appending {track_count} track(s) to playlist \"{playlist_path}\"",
                 track_count = track_refs.len()
             );
-            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?;
+            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?
         }
         ImportPlaylistMode::Replace => {
             log::info!(
                 "Replacing playlist \"{playlist_path}\" with {track_count} track(s)",
                 track_count = track_refs.len()
             );
-            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await?;
+            PlaylistEntity::delete_list(pool, playlist_id).await?;
+            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?
         }
+    };
+    if !ignored_track_refs.is_empty() {
+        log::warn!(
+            "Ignored {ignored_count} duplicate track(s) in playlist \"{playlist_path}\"",
+            ignored_count = ignored_track_refs.len()
+        );
     }
     tx.commit().await.map_err(Into::into)
 }

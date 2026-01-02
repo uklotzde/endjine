@@ -125,12 +125,14 @@ impl Playlist {
 
     /// Appends tracks to a playlist.
     ///
+    /// Returns all duplicate tracks that have been ignored.
+    ///
     /// Must run within a transaction in isolation.
     pub async fn append_tracks<'e, E>(
         mut executor: impl FnMut() -> E,
         id: PlaylistId,
         track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
-    ) -> anyhow::Result<()>
+    ) -> anyhow::Result<Vec<PlaylistTrackRef>>
     where
         E: SqliteExecutor<'e>,
     {
@@ -146,13 +148,14 @@ impl Playlist {
         );
 
         // Append each track as a new playlist entry.
+        let mut ignored_track_refs = Vec::new();
         for track_ref in track_refs {
             let PlaylistTrackRef {
                 track_id,
                 database_uuid,
-            } = track_ref;
-            let result = sqlx::query(
-                r#"INSERT INTO "PlaylistEntity"
+            } = &track_ref;
+            let query_result = sqlx::query(
+                r#"INSERT OR IGNORE INTO "PlaylistEntity"
                    ("listId", "trackId", "databaseUuid", "nextEntityId", "membershipReference")
                    VALUES (?1, ?2, ?3, ?4, ?5)"#,
             )
@@ -164,7 +167,14 @@ impl Playlist {
             .execute(executor())
             .await?;
 
-            let new_entity_id = PlaylistEntityId::new(result.last_insert_rowid());
+            debug_assert!(query_result.rows_affected() <= 1);
+            if query_result.rows_affected() == 0 {
+                // Ignore duplicate tracks.
+                ignored_track_refs.push(track_ref);
+                continue;
+            }
+
+            let new_entity_id = PlaylistEntityId::new(query_result.last_insert_rowid());
 
             // Update the previous entry to point to this new entry.
             if prev_entity_id.is_valid() {
@@ -181,98 +191,7 @@ impl Playlist {
             next_membership_ref = next_membership_reference(next_membership_ref);
         }
 
-        Ok(())
-    }
-
-    /// Replaces all tracks in a playlist.
-    ///
-    /// This method replaces all existing tracks in the playlist.
-    /// It reuses existing entries where possible.
-    ///
-    /// Must run within a transaction in isolation.
-    pub async fn replace_tracks<'e, E>(
-        mut executor: impl FnMut() -> E,
-        id: PlaylistId,
-        track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
-    ) -> anyhow::Result<()>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let mut existing_entries = PlaylistEntity::load_list(executor(), id).await?.into_iter();
-        let mut track_refs = track_refs.into_iter();
-        let mut last_id_membership_reference = None;
-        while let Some(next_track_ref) = track_refs.next() {
-            let Some(next_entry) = existing_entries.next() else {
-                // All existing entries have been reused.
-                // The remaining tracks need to be added as new entries.
-                return Self::append_tracks(
-                    executor,
-                    id,
-                    std::iter::once(next_track_ref).chain(track_refs),
-                )
-                .await;
-            };
-
-            // Update entry.
-            if next_track_ref != next_entry.track_ref() {
-                let PlaylistTrackRef {
-                    track_id,
-                    database_uuid,
-                } = next_track_ref;
-                sqlx::query(
-                    r#"UPDATE "PlaylistEntity"
-                    SET "trackId"=?1, "databaseUuid"=?2
-                    WHERE "id"=?3"#,
-                )
-                .bind(track_id)
-                .bind(database_uuid)
-                .bind(next_entry.id)
-                .execute(executor())
-                .await?;
-            }
-
-            // Prepare next iteration.
-            let next_membership_reference = next_entry.membership_reference;
-            debug_assert!(next_membership_reference >= MIN_MEMBERSHIP_REFERENCE);
-            debug_assert!(
-                last_id_membership_reference
-                    .is_none_or(|(_, last_membership_reference)| last_membership_reference
-                        < next_membership_reference)
-            );
-            last_id_membership_reference = Some((next_entry.id, next_membership_reference));
-        }
-
-        let Some((last_id, last_membership_reference)) = last_id_membership_reference else {
-            // Playlist is empty.
-            debug_assert_eq!(
-                PlaylistEntity::count_list(executor(), id).await.ok(),
-                Some(0)
-            );
-            let _query_result = PlaylistEntity::delete_list(executor(), id).await?;
-            return Ok(());
-        };
-
-        // Terminate linked list.
-        sqlx::query(
-            r#"UPDATE "PlaylistEntity"
-                   SET "nextEntityId"=?1
-                   WHERE "id"=?2"#,
-        )
-        .bind(PlaylistEntityId::INVALID_ZERO)
-        .bind(last_id)
-        .execute(executor())
-        .await?;
-
-        // Delete unused/obsolete entries.
-        let _query_result = sqlx::query(
-            r#"DELETE FROM "PlaylistEntity" WHERE "listId"=?1 AND "membershipReference">?2"#,
-        )
-        .bind(id)
-        .bind(last_membership_reference)
-        .execute(executor())
-        .await?;
-
-        Ok(())
+        Ok(ignored_track_refs)
     }
 }
 
