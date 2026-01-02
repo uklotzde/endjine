@@ -6,11 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::anyhow;
 use futures_util::stream::BoxStream;
 use relative_path::RelativePath;
 use sqlx::{FromRow, SqliteExecutor};
 
-use crate::{AlbumArtId, DbUuid, UnixTimestamp};
+use crate::{AlbumArtId, DbUuid, UnixTimestamp, split_and_normalize_file_path};
 
 crate::db_id!(TrackId);
 
@@ -84,10 +85,22 @@ impl Track {
     /// the column value could safely be set to NULL.
     pub const DEFAULT_ALBUM_ART: &str = "image://planck/0";
 
-    /// Determines the base path for all relative track paths in the database.
+    /// Splits the database file path into a root path and the relat the base path for all relative track paths in the database.
+    ///
+    /// Returns a tuple with both the `root_path` and the relative `base_path`. The `root_path`
+    /// is empty if the database file path is relative.
     #[must_use]
-    pub fn base_path(database_path: &Path) -> Option<&Path> {
-        grandparent_path(database_path)
+    pub fn split_root_base_path(
+        database_file_path: &Path,
+    ) -> Option<(PathBuf, Cow<'_, RelativePath>)> {
+        let (root_path, database_path) = split_and_normalize_file_path(database_file_path);
+        let base_path = match database_path {
+            Cow::Borrowed(database_path) => grandparent_path(database_path).map(Cow::Borrowed),
+            Cow::Owned(database_path) => grandparent_path(&database_path)
+                .map(RelativePath::to_relative_path_buf)
+                .map(Cow::Owned),
+        };
+        base_path.map(|base_path| (root_path, base_path))
     }
 
     /// Determines the file path given the base path.
@@ -139,14 +152,13 @@ impl Track {
     /// The path must be relative and match the path in the database.
     pub async fn find_ref_by_path(
         executor: impl SqliteExecutor<'_>,
-        path: &Path,
+        path: &RelativePath,
     ) -> sqlx::Result<Option<TrackRef>> {
-        debug_assert!(path.is_relative());
         debug_assert!(path.starts_with(RELATIVE_TRACK_PATH_PREFIX));
         sqlx::query_as(
             r#"SELECT "id","originDatabaseUuid","originTrackId" FROM "Track" WHERE "path"=?1"#,
         )
-        .bind(path.display().to_string())
+        .bind(path.to_string())
         .fetch_optional(executor)
         .await
     }
@@ -154,77 +166,129 @@ impl Track {
 
 pub const RELATIVE_TRACK_PATH_PREFIX: &str = "..";
 
-pub fn resolve_track_path<'p>(
-    base_path: &Path,
-    track_path: &'p Path,
-) -> anyhow::Result<Cow<'p, Path>> {
-    debug_assert!(base_path.is_absolute());
-    if track_path.is_relative() {
-        let resolved_path = if track_path.starts_with(RELATIVE_TRACK_PATH_PREFIX) {
-            // Leave relative paths as is.
-            Cow::Borrowed(track_path)
-        } else {
-            Cow::Owned(Path::new(RELATIVE_TRACK_PATH_PREFIX).join(track_path))
-        };
-        return Ok(resolved_path);
+pub fn normalize_track_file_path<'p>(
+    base_path: &RelativePath,
+    track_file_path: &'p Path,
+) -> anyhow::Result<(PathBuf, Cow<'p, RelativePath>)> {
+    debug_assert!(base_path.is_normalized());
+    let (root_path, normalized_track_path) = split_and_normalize_file_path(track_file_path);
+    if track_file_path.is_relative() {
+        if normalized_track_path.starts_with(RELATIVE_TRACK_PATH_PREFIX) {
+            // Leave relative with matching prefix as is.
+            return Ok((root_path, normalized_track_path));
+        }
+        return Ok((
+            root_path,
+            Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join(normalized_track_path)),
+        ));
     }
-    debug_assert!(track_path.is_absolute());
-    let relative_path = track_path.strip_prefix(base_path)?;
-    let resolved_path = Path::new(RELATIVE_TRACK_PATH_PREFIX).join(relative_path);
-    Ok(Cow::Owned(resolved_path))
+    debug_assert!(track_file_path.is_absolute());
+    let relative_path = normalized_track_path
+        .strip_prefix(base_path)
+        .map_err(|_| anyhow!("strip base path prefix"))?;
+    Ok((
+        root_path,
+        Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join(relative_path)),
+    ))
 }
 
 #[must_use]
-fn grandparent_path(path: &Path) -> Option<&Path> {
-    path.parent().and_then(Path::parent)
+fn grandparent_path(path: &RelativePath) -> Option<&RelativePath> {
+    path.parent().and_then(RelativePath::parent)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{borrow::Cow, path::PathBuf};
+
     #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn resolve_track_path() {
+    fn normalize_track_file_path() {
         use std::path::Path;
+
+        use relative_path::RelativePath;
 
         use crate::track::RELATIVE_TRACK_PATH_PREFIX;
 
-        let base_path = Path::new("/foo/bar").to_path_buf();
+        #[cfg(target_os = "windows")]
+        let root_path = Path::new("C:\\");
+        #[cfg(not(target_os = "windows"))]
+        let root_path = Path::new("/");
+        assert!(root_path.is_absolute());
+
+        let base_path = RelativePath::new("foo/bar").to_relative_path_buf();
+        let abs_base_path = base_path.to_path(root_path);
 
         // Resolvable paths.
         assert_eq!(
-            super::resolve_track_path(&base_path, Path::new(RELATIVE_TRACK_PATH_PREFIX)).unwrap(),
-            Path::new(RELATIVE_TRACK_PATH_PREFIX)
+            super::normalize_track_file_path(&base_path, Path::new(RELATIVE_TRACK_PATH_PREFIX))
+                .unwrap(),
+            (
+                PathBuf::new(),
+                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
+            )
         );
         assert_eq!(
-            super::resolve_track_path(&base_path, &base_path).unwrap(),
-            Path::new(RELATIVE_TRACK_PATH_PREFIX)
+            super::normalize_track_file_path(&base_path, &abs_base_path).unwrap(),
+            (
+                root_path.to_path_buf(),
+                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
+            )
         );
         assert_eq!(
-            super::resolve_track_path(&base_path, &base_path.join("lorem")).unwrap(),
-            Path::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem")
+            super::normalize_track_file_path(&base_path, &abs_base_path.join("lorem")).unwrap(),
+            (
+                root_path.to_path_buf(),
+                Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem"))
+            )
         );
         assert_eq!(
-            super::resolve_track_path(&base_path, &base_path.join("lorem").join("ipsum")).unwrap(),
-            Path::new(RELATIVE_TRACK_PATH_PREFIX)
-                .join("lorem")
-                .join("ipsum")
-        );
-        assert_eq!(
-            super::resolve_track_path(
+            super::normalize_track_file_path(
                 &base_path,
-                &base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar")
+                &abs_base_path.join("lorem").join("ipsum")
             )
             .unwrap(),
-            Path::new(RELATIVE_TRACK_PATH_PREFIX)
-                .join(RELATIVE_TRACK_PATH_PREFIX)
-                .join("bar")
+            (
+                root_path.to_path_buf(),
+                Cow::Owned(
+                    RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
+                        .join("lorem")
+                        .join("ipsum")
+                )
+            )
+        );
+        assert_eq!(
+            super::normalize_track_file_path(
+                &base_path,
+                &abs_base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar")
+            )
+            .unwrap(),
+            (
+                root_path.to_path_buf(),
+                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
+            )
         );
 
         // Unresolvable paths.
-        assert!(super::resolve_track_path(&base_path, &Path::new("/").join("foo")).is_err());
-        assert!(super::resolve_track_path(&base_path, &Path::new("/").join("bar")).is_err());
         assert!(
-            super::resolve_track_path(&base_path, &Path::new("/").join("bar").join("foo")).is_err()
+            super::normalize_track_file_path(
+                &base_path,
+                &RelativePath::new("foo").to_path(root_path)
+            )
+            .is_err()
+        );
+        assert!(
+            super::normalize_track_file_path(
+                &base_path,
+                &RelativePath::new("bar").to_path(root_path)
+            )
+            .is_err()
+        );
+        assert!(
+            super::normalize_track_file_path(
+                &base_path,
+                &RelativePath::new("bar/foo").to_path(root_path)
+            )
+            .is_err()
         );
     }
 }

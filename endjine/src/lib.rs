@@ -6,6 +6,11 @@
 
 mod album_art;
 
+use std::borrow::Cow;
+use std::path::{Component, Path, PathBuf};
+
+use relative_path::{RelativePath, RelativePathBuf};
+
 pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
 
 mod changelog;
@@ -38,7 +43,7 @@ pub use self::playlist::{
     PLAYLIST_PATH_SEGMENT_SEPARATOR, Playlist, PlaylistAllChildren, PlaylistAllChildrenId,
     PlaylistAllParent, PlaylistAllParentId, PlaylistEntity, PlaylistEntityId, PlaylistId,
     PlaylistPath, PlaylistPathId, PlaylistTrackRef, concat_playlist_path_segments_to_string,
-    is_valid_playlist_path_segment, resolve_playlist_track_refs_from_paths,
+    is_valid_playlist_path_segment, resolve_playlist_track_refs_from_file_paths,
 };
 
 mod preparelist;
@@ -50,7 +55,9 @@ pub use self::smartlist::{
 };
 
 mod track;
-pub use self::track::{RELATIVE_TRACK_PATH_PREFIX, Track, TrackId, TrackRef, resolve_track_path};
+pub use self::track::{
+    RELATIVE_TRACK_PATH_PREFIX, Track, TrackId, TrackRef, normalize_track_file_path,
+};
 
 mod unix_timestamp;
 pub use self::unix_timestamp::UnixTimestamp;
@@ -59,3 +66,31 @@ pub use self::unix_timestamp::UnixTimestamp;
 pub mod batch;
 #[cfg(feature = "batch")]
 pub use self::batch::BatchOutcome;
+
+#[must_use]
+pub fn split_and_normalize_file_path(file_path: &Path) -> (PathBuf, Cow<'_, RelativePath>) {
+    if file_path.is_relative()
+        && let Ok(relative_path) = RelativePath::from_path(file_path)
+    {
+        return (PathBuf::new(), Cow::Borrowed(relative_path));
+    }
+    debug_assert!(file_path.is_absolute());
+    let mut root_components = Vec::with_capacity(2);
+    let normalized_path = file_path
+        .components()
+        .filter_map(|component| match component {
+            root_component @ (Component::Prefix(_) | Component::RootDir) => {
+                root_components.push(root_component);
+                None
+            }
+            Component::CurDir => None,
+            Component::ParentDir => Some(relative_path::Component::ParentDir),
+            Component::Normal(normal) => normal.to_str().map(relative_path::Component::Normal),
+        })
+        .collect::<RelativePathBuf>()
+        // TODO: How to avoid duplicate allocation by collect + normalize?
+        .normalize()
+        .into();
+    let root_path = root_components.into_iter().collect::<PathBuf>();
+    (root_path, normalized_path)
+}

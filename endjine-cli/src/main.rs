@@ -5,18 +5,20 @@
 
 use std::{
     borrow::Cow,
+    env,
     path::{Path, PathBuf},
 };
 
-use anyhow::bail;
+use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt as _;
+use relative_path::{RelativePath, RelativePathBuf};
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
     AlbumArt, BatchOutcome, DbUuid, Historylist, HistorylistEntity, Information, PerformanceData,
-    Playlist, PlaylistEntity, PreparelistEntity, RELATIVE_TRACK_PATH_PREFIX, Smartlist, Track,
-    batch, open_database, resolve_playlist_track_refs_from_paths,
+    Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch, open_database,
+    resolve_playlist_track_refs_from_file_paths,
 };
 
 const DEFAULT_DB_FILE: &str = "m.db";
@@ -80,6 +82,7 @@ struct Args {
     command: Command,
 }
 
+#[expect(clippy::too_many_lines, reason = "TODO")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // In Windows, we must request a virtual terminal environment to display colors correctly.
@@ -93,20 +96,26 @@ async fn main() -> anyhow::Result<()> {
 
     let Args { db_file, command } = Args::parse();
 
-    let db_file = db_file.map_or(Cow::Borrowed(Path::new(DEFAULT_DB_FILE)), Cow::Owned);
+    let mut db_file_path = db_file.map_or(Cow::Borrowed(Path::new(DEFAULT_DB_FILE)), Cow::Owned);
+    if db_file_path.is_relative() {
+        let current_dir = env::current_dir()?;
+        debug_assert!(current_dir.is_absolute());
+        db_file_path = Cow::Owned(current_dir.join(db_file_path));
+    }
+    debug_assert!(db_file_path.is_absolute());
 
-    let (pool, _info) = match open_database(&db_file, None).await {
+    let (pool, _info) = match open_database(&db_file_path, None).await {
         Ok(pool) => {
             log::info!(
-                "Opened database file \"{db_file}\"",
-                db_file = db_file.display()
+                "Opened database file \"{db_file_path}\"",
+                db_file_path = db_file_path.display()
             );
             pool
         }
         Err(err) => {
             log::error!(
-                "Failed to open database file \"{db_file}\": {err:#}",
-                db_file = db_file.display()
+                "Failed to open database file \"{db_file_path}\": {err:#}",
+                db_file_path = db_file_path.display()
             );
             bail!("aborted");
         }
@@ -127,10 +136,13 @@ async fn main() -> anyhow::Result<()> {
             }
             performance_data_scan(&pool).await;
             // Find missing or inaccessible track files.
-            if let Some(base_path) = Track::base_path(&db_file) {
-                find_track_file_issues(&pool, base_path.to_path_buf()).await;
+            if let Some((root_path, base_path)) = Track::split_root_base_path(&db_file_path) {
+                find_track_file_issues(&pool, base_path.to_path(root_path)).await;
             } else {
-                log::warn!("Cannot resolve base path from database path");
+                log::warn!(
+                    "Cannot resolve track base path from database file path \"{db_file_path}\"",
+                    db_file_path = db_file_path.display()
+                );
             }
         }
         Command::DeleteEmptyPlaylists => {
@@ -149,12 +161,17 @@ async fn main() -> anyhow::Result<()> {
             m3u_base_path,
         }) => {
             let mode = mode.unwrap_or_default();
-            if let Some(track_base_path) = Track::base_path(&db_file) {
-                log::info!("Track base path: {}", track_base_path.display());
+            if let Some((root_path, track_base_path)) = Track::split_root_base_path(&db_file_path) {
+                debug_assert_ne!(
+                    root_path,
+                    PathBuf::new(),
+                    "root path should never be empty for absolute paths"
+                );
+                log::info!("Track base path: {track_base_path}");
                 match import_m3u_playlist(
                     &pool,
                     *info.uuid(),
-                    track_base_path,
+                    &track_base_path,
                     &playlist_path,
                     mode,
                     &m3u_file,
@@ -521,56 +538,85 @@ async fn playlist_delete_empty(pool: &SqlitePool) {
     }
 }
 
-fn import_m3u_playlist_track_paths(
-    file_path: &Path,
-    base_path: Option<&Path>,
-) -> anyhow::Result<Vec<PathBuf>> {
+fn import_m3u_playlist_entries(file_path: &Path, base_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let reader = m3u::Reader::open(file_path)?;
-    let base_path = base_path.unwrap_or_else(|| Path::new(RELATIVE_TRACK_PATH_PREFIX));
     let mut reader = reader;
     reader
         .entries()
         .map(|entry_result| {
             entry_result.map_err(Into::into).and_then(|entry| {
-                let mut path = match entry {
-                    m3u::Entry::Path(path) => path,
-                    m3u::Entry::Url(url) => match url.to_file_path() {
-                        Ok(path) => path,
-                        Err(()) => {
-                            bail!("URL \"{url}\" is not a local file path");
-                        }
-                    },
+                let entry_path = M3uEntryPath::try_from(entry).context("import M3U entry path")?;
+                let file_path = match entry_path {
+                    M3uEntryPath::Absolute(file_path) => file_path,
+                    M3uEntryPath::Relative(relative_path) => relative_path.to_path(base_path),
                 };
-                if path.is_relative() {
-                    path = base_path.join(path);
-                }
-                Ok(path)
+                Ok(file_path)
             })
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
+#[derive(Debug, Clone)]
+enum M3uEntryPath {
+    Absolute(PathBuf),
+    Relative(RelativePathBuf),
+}
+
+impl TryFrom<m3u::Entry> for M3uEntryPath {
+    type Error = anyhow::Error;
+
+    fn try_from(entry: m3u::Entry) -> Result<Self, Self::Error> {
+        let file_path = match entry {
+            m3u::Entry::Path(file_path) => file_path,
+            m3u::Entry::Url(url) => match url.to_file_path() {
+                Ok(path) => path,
+                Err(()) => {
+                    bail!("URL \"{url}\" is not a (local) file path");
+                }
+            },
+        };
+        let entry_path = match RelativePath::from_path(&file_path) {
+            Ok(_) => {
+                M3uEntryPath::Relative(RelativePathBuf::from_path(file_path).expect("infallible"))
+            }
+            Err(_) => {
+                if file_path.is_absolute() {
+                    M3uEntryPath::Absolute(file_path)
+                } else {
+                    bail!(
+                        "unsupported file path \"{file_path}\"",
+                        file_path = file_path.display()
+                    );
+                }
+            }
+        };
+        Ok(entry_path)
+    }
+}
+
 async fn import_m3u_playlist(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    track_base_path: &Path,
+    track_base_path: &RelativePath,
     playlist_path: &str,
     mode: ImportPlaylistMode,
-    m3u_file: &Path,
+    m3u_file_path: &Path,
     m3u_base_path: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let imported_track_paths = import_m3u_playlist_track_paths(m3u_file, m3u_base_path)?;
+    let track_file_paths =
+        import_m3u_playlist_entries(m3u_file_path, m3u_base_path.unwrap_or(m3u_file_path))
+            .context("import M3U playlist entries")?;
 
     log::info!(
-        "Resolving paths of {track_count} track(s) in M3U playlist",
-        track_count = imported_track_paths.len()
+        "Resolving paths of {entry_count} entry(ies) in M3U playlist",
+        entry_count = track_file_paths.len()
     );
 
-    let track_refs = resolve_playlist_track_refs_from_paths(
+    let track_refs = resolve_playlist_track_refs_from_file_paths(
         pool,
         local_database_uuid,
         track_base_path,
-        imported_track_paths.iter().map(PathBuf::as_path),
+        track_file_paths.iter().map(PathBuf::as_path),
     )
     .await?;
     let Some(playlist_id) = Playlist::find_id_by_path(pool, playlist_path).await? else {

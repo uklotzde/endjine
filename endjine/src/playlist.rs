@@ -12,11 +12,12 @@ use futures_util::{
     stream::{BoxStream, FuturesOrdered},
 };
 use itertools::Itertools;
+use relative_path::RelativePath;
 use sqlx::{
     FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
 };
 
-use crate::{DbUuid, Track, TrackId, TrackRef, resolve_track_path};
+use crate::{DbUuid, Track, TrackId, TrackRef, normalize_track_file_path};
 
 crate::db_id!(PlaylistId);
 
@@ -195,30 +196,24 @@ impl Playlist {
     }
 }
 
-pub async fn resolve_playlist_track_refs_from_paths<'p>(
+pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    base_path: &Path,
+    base_path: &RelativePath,
     track_paths: impl IntoIterator<Item = &'p Path>,
 ) -> anyhow::Result<Vec<PlaylistTrackRef>> {
     let track_refs_fut = track_paths
         .into_iter()
         .map(|track_path| {
-            resolve_track_path(base_path, track_path)
-                .map(|track_path| async move {
+            normalize_track_file_path(base_path, track_path)
+                .map(|(_root_path, track_path)| async move {
                     let track_ref = Track::find_ref_by_path(pool, &track_path)
                         .await
                         .with_context(|| {
-                            format!(
-                                "find reference of track path \"{track_path}\"",
-                                track_path = track_path.display()
-                            )
+                            format!("find reference of track path \"{track_path}\"")
                         })?;
                     let Some(track_ref) = track_ref else {
-                        bail!(
-                            "unknown track path \"{track_path}\"",
-                            track_path = track_path.display()
-                        );
+                        bail!("unknown track path \"{track_path}\"");
                     };
                     PlaylistTrackRef::new(track_ref, local_database_uuid)
                 })
