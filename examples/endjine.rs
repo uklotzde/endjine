@@ -27,6 +27,8 @@ enum Command {
     Analyze,
     /// Import playlist from M3U file.
     ImportPlaylist(ImportPlaylistArgs),
+    /// Delete all empty playlists.
+    DeleteEmptyPlaylists,
     /// Convert album art images from PNG to JPG to save space.
     ShrinkAlbumArt,
     /// Purge all album art for re-import.
@@ -131,6 +133,9 @@ async fn main() -> anyhow::Result<()> {
                 log::warn!("Cannot resolve base path from database path");
             }
         }
+        Command::DeleteEmptyPlaylists => {
+            playlist_delete_empty(&pool).await;
+        }
         Command::ShrinkAlbumArt => {
             album_art_shrink_images(&pool).await;
         }
@@ -173,15 +178,6 @@ async fn main() -> anyhow::Result<()> {
             performance_data_delete_orphaned(&pool).await;
             track_reset_unused_default_album_art(&pool).await;
             album_art_delete_unused(&pool).await;
-            // TODO
-            let playlist_entry_count = PlaylistEntity::delete_all_external(&pool).await?;
-            if playlist_entry_count > 0 {
-                log::info!("Deleted {playlist_entry_count} playlist entry(-ies)");
-            }
-            let playlist_count = Playlist::delete_all_empty_without_children(&pool).await?;
-            if playlist_count > 0 {
-                log::info!("Deleted {playlist_count} playlist(s)");
-            }
         }
         Command::Optimize => {
             optimize_database(&pool).await;
@@ -502,6 +498,24 @@ async fn album_art_purge_images(pool: &SqlitePool) {
             }
             Err(err) => {
                 log::warn!("AlbumArt: Purging of images aborted with error: {err}");
+            }
+        }
+    }
+}
+
+async fn playlist_delete_empty(pool: &SqlitePool) {
+    log::info!("Playlist: Deleting empty...");
+    loop {
+        match Playlist::delete_all_empty_without_children(pool).await {
+            Ok(playlist_count) => {
+                if playlist_count > 0 {
+                    log::info!("Playlist: Deleted {playlist_count} empty");
+                } else {
+                    break;
+                }
+            }
+            Err(err) => {
+                log::warn!("Playlist: Failed to delete empty: {err}");
             }
         }
     }

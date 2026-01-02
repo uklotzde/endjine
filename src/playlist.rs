@@ -497,17 +497,6 @@ impl PlaylistEntity {
             .fetch_optional(executor)
             .await
     }
-
-    /// Deletes all rows from external databases.
-    pub async fn delete_all_external(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
-        sqlx::query(
-            r#"DELETE FROM "PlaylistEntity"
-                WHERE "databaseUuid" NOT IN (SELECT "uuid" FROM "Information")"#,
-        )
-        .execute(executor)
-        .await
-        .map(|result| result.rows_affected())
-    }
 }
 
 /// References a track with(-in) its origin database.
