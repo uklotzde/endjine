@@ -562,7 +562,7 @@ async fn import_m3u_playlist(
     let imported_track_paths = import_m3u_playlist_track_paths(m3u_file, m3u_base_path)?;
 
     log::info!(
-        "Resolving paths of {track_count} track(s)",
+        "Resolving paths of {track_count} track(s) in M3U playlist",
         track_count = imported_track_paths.len()
     );
 
@@ -578,14 +578,26 @@ async fn import_m3u_playlist(
         log::warn!("Playlist \"{playlist_path}\" not found");
         return Ok(());
     };
+
+    // Modify playlist within a transaction.
+    let tx = pool.begin().await?;
     match mode {
         ImportPlaylistMode::Append => {
-            Playlist::append_tracks(|| pool, playlist_id, track_refs).await
+            log::info!(
+                "Appending {track_count} track(s) to playlist \"{playlist_path}\"",
+                track_count = track_refs.len()
+            );
+            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?;
         }
         ImportPlaylistMode::Replace => {
-            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await
+            log::info!(
+                "Replacing playlist \"{playlist_path}\" with {track_count} track(s)",
+                track_count = track_refs.len()
+            );
+            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await?;
         }
     }
+    tx.commit().await.map_err(Into::into)
 }
 
 async fn optimize_database(pool: &SqlitePool) {
