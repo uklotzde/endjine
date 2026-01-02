@@ -454,8 +454,6 @@ impl PlaylistEntity {
         let mut last_entity_results = sqlx::query_as(
             r#"SELECT * FROM "PlaylistEntity"
                WHERE "listId"=?1
-               GROUP BY "membershipReference"
-               HAVING "membershipReference"=MAX("membershipReference")
                ORDER BY "membershipReference" DESC
                LIMIT 2"#,
         )
@@ -479,8 +477,14 @@ impl PlaylistEntity {
                 next_id = last_entity.next_entity_id
             );
         }
-        if last_entity_results.next().await.is_some() {
-            bail!("playlist with multiple last entries");
+        if let Some(next_to_last_entity_result) = last_entity_results.next().await {
+            let next_to_last_entity = next_to_last_entity_result?;
+            debug_assert!(
+                next_to_last_entity.membership_reference <= last_entity.membership_reference
+            );
+            if next_to_last_entity.membership_reference == last_entity.membership_reference {
+                bail!("playlist with multiple last entries");
+            }
         }
         Ok(Some(last_entity))
     }
