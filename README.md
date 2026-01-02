@@ -26,17 +26,16 @@ A Rust crate for accessing the [Engine DJ](https://enginedj.com/) library databa
 If you plan to contribute then fork this repo on GitHub and add your fork as a remote named
 `origin`.
 
-## Examples
+## CLI
 
-See the `examples/` directory for more usage examples.
-
-### Housekeeping
-
-**_!!! ONLY USE THIS ON A COPY OF YOUR LIBRARY FILE !!!_**
+See the `endjine-cli/` directory for a simple CLI to perform basic tasks.
 
 ```shell
-RUST_LOG=info cargo run --release --example housekeeping /my-playground/Engine Library/Database2/m.db
+cargo run -p endjine-cli -- --help
 ```
+
+All modifying tasks are considered as experimental. Always keep a backup of the original database
+file!
 
 ## Naming
 

@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: The endjine authors
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "endjine-cli"
+description = "Command-line interface for managing Engine DJ library databases."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "endjine"
+path = "src/main.rs"
+
+[dependencies]
+endjine = { workspace = true, features = ["batch"] }
+
+anyhow.workspace = true
+clap = { version = "4.5.53", features = ["derive"] }
+colored = "3.0.0"
+env_logger = "0.11.8"
+futures-util.workspace = true
+log.workspace = true
+m3u = "1.0.0"
+sqlx = { workspace = true, features = ["runtime-tokio"] }
+tokio = { workspace = true, features = ["macros"] }
+
+[lints]
+workspace = true

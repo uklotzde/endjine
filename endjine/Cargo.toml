@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: The endjine authors
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "endjine"
+description = "Accessing the Engine DJ library database."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["engine", "dj", "database", "music", "library"]
+categories = ["database", "multimedia"]
+include = ["README.md", "LICENSES/", "src/"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+itertools.workspace = true
+relative-path.workspace = true
+serde.workspace = true
+sqlx.workspace = true
+
+futures-util = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+default = ["batch"]
+batch = ["dep:futures-util", "dep:log", "dep:tokio"]
+
+[lints]
+workspace = true
