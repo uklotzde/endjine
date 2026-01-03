@@ -111,6 +111,6 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: CLI (${{ matrix.cli_arch }})
-          path: endjine-${{ matrix.cli_arch }}.tgz
+          path: endjine-${{ matrix.cli_arch }}.zip
           if-no-files-found: error
           retention-days: 30
