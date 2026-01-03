@@ -6,8 +6,11 @@
 
 mod album_art;
 
-use std::borrow::Cow;
-use std::path::{Component, Path, PathBuf};
+use std::{
+    borrow::Cow,
+    fmt,
+    path::{Component, Path, PathBuf},
+};
 
 use relative_path::{RelativePath, RelativePathBuf};
 
@@ -56,7 +59,7 @@ pub use self::smartlist::{
 
 mod track;
 pub use self::track::{
-    RELATIVE_TRACK_PATH_PREFIX, Track, TrackId, TrackRef, normalize_track_file_path,
+    RELATIVE_TRACK_PATH_PREFIX, Track, TrackId, TrackRef, import_track_file_path,
 };
 
 mod unix_timestamp;
@@ -67,30 +70,187 @@ pub mod batch;
 #[cfg(feature = "batch")]
 pub use self::batch::BatchOutcome;
 
-#[must_use]
-pub fn split_and_normalize_file_path(file_path: &Path) -> (PathBuf, Cow<'_, RelativePath>) {
-    if file_path.is_relative()
-        && let Ok(relative_path) = RelativePath::from_path(file_path)
-    {
-        return (PathBuf::new(), Cow::Borrowed(relative_path));
+/// Portable file path.
+///
+/// Decomposed into root base path and (normalized) relative path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilePath<'a> {
+    root: Cow<'a, Path>,
+    relative: Cow<'a, RelativePath>,
+}
+
+impl<'a> FilePath<'a> {
+    /// Root base path.
+    ///
+    /// Empty for relative file paths.
+    #[must_use]
+    pub const fn root(&self) -> &Cow<'_, Path> {
+        &self.root
     }
-    debug_assert!(file_path.is_absolute());
-    let mut root_components = Vec::with_capacity(2);
-    let normalized_path = file_path
-        .components()
-        .filter_map(|component| match component {
-            root_component @ (Component::Prefix(_) | Component::RootDir) => {
-                root_components.push(root_component);
-                None
-            }
-            Component::CurDir => None,
-            Component::ParentDir => Some(relative_path::Component::ParentDir),
-            Component::Normal(normal) => normal.to_str().map(relative_path::Component::Normal),
+
+    /// Relative path part.
+    ///
+    /// Already normalized.
+    #[must_use]
+    pub const fn relative(&self) -> &Cow<'_, RelativePath> {
+        &self.relative
+    }
+
+    /// Relative path part.
+    ///
+    /// Already normalized.
+    #[must_use]
+    pub fn into_relative(self) -> Cow<'a, RelativePath> {
+        let Self { root: _, relative } = self;
+        relative
+    }
+
+    #[must_use]
+    pub(crate) fn to_parent_path(&'a self) -> Option<Self> {
+        let Self { root, relative } = self;
+        let relative = relative.parent()?;
+        Some(Self {
+            root: root.clone(),
+            relative: relative.into(),
         })
-        .collect::<RelativePathBuf>()
-        // TODO: How to avoid duplicate allocation by collect + normalize?
-        .normalize()
-        .into();
-    let root_path = root_components.into_iter().collect::<PathBuf>();
-    (root_path, normalized_path)
+    }
+}
+
+impl FilePath<'_> {
+    #[must_use]
+    pub fn is_relative(&self) -> bool {
+        let Self { root, relative: _ } = self;
+        root.is_relative()
+    }
+
+    /// Imports a file system path.
+    pub fn import_path<P>(path: &P) -> anyhow::Result<FilePath<'static>>
+    where
+        P: ?Sized + AsRef<Path>,
+    {
+        // Monomorphization: Use a single, shared implementation for all generic arg types.
+        Self::import_path_impl(path.as_ref())
+    }
+
+    fn import_path_impl(path: &Path) -> anyhow::Result<FilePath<'static>> {
+        if path.is_relative() {
+            let relative = RelativePath::from_path(path)?;
+            let root = Path::new("").into();
+            let relative = relative.normalize().into();
+            let file_path = FilePath { root, relative };
+            debug_assert!(file_path.is_relative());
+            return Ok(file_path);
+        }
+        debug_assert!(path.is_absolute());
+        let mut root_components = Vec::with_capacity(2);
+        let relative = path
+            .components()
+            .filter_map(|component| match component {
+                root_component @ (Component::Prefix(_) | Component::RootDir) => {
+                    root_components.push(root_component);
+                    None
+                }
+                Component::CurDir => None,
+                Component::ParentDir => Some(relative_path::Component::ParentDir),
+                Component::Normal(normal) => normal.to_str().map(relative_path::Component::Normal),
+            })
+            .collect::<RelativePathBuf>()
+            // TODO: How to avoid duplicate allocation by collect + normalize?
+            .normalize()
+            .into();
+        let root = root_components.into_iter().collect::<PathBuf>().into();
+        let file_path = FilePath { root, relative };
+        debug_assert!(!file_path.is_relative());
+        Ok(file_path)
+    }
+
+    #[must_use]
+    pub(crate) fn into_owned(self) -> FilePath<'static> {
+        let Self { root, relative } = self;
+        let root = root.into_owned();
+        let relative = relative.into_owned();
+        FilePath {
+            root: Cow::Owned(root),
+            relative: Cow::Owned(relative),
+        }
+    }
+
+    pub(crate) fn add_relative_prefix<P>(&mut self, prefix: &P)
+    where
+        P: AsRef<RelativePath> + ?Sized,
+    {
+        let Self { root: _, relative } = self;
+        *relative = prefix.as_ref().join_normalized(&relative).into();
+    }
+
+    #[must_use]
+    pub(crate) fn strip_relative_prefix<P>(&mut self, prefix: &P) -> bool
+    where
+        P: AsRef<RelativePath> + ?Sized,
+    {
+        let Self { root: _, relative } = self;
+        let Ok(stripped) = relative.strip_prefix(prefix) else {
+            // Prefix mismatch.
+            return false;
+        };
+        debug_assert!(stripped.as_str().len() <= relative.as_str().len());
+        if stripped != relative {
+            // We have to re-allocate and cannot reuse the suffix part.
+            *relative = Cow::Owned(stripped.to_relative_path_buf());
+        }
+        true
+    }
+
+    /// Reconstructs the file system path.
+    #[must_use]
+    pub fn to_path(&self) -> PathBuf {
+        let Self { root, relative } = self;
+        relative.to_path(root)
+    }
+}
+
+impl fmt::Display for FilePath<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_path().display().fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use relative_path::RelativePath;
+
+    use crate::FilePath;
+
+    #[test]
+    fn import_file_path() {
+        let empty_root_path = Path::new("");
+
+        #[cfg(target_os = "windows")]
+        let root_path = Path::new("C:\\");
+        #[cfg(not(target_os = "windows"))]
+        let root_path = Path::new("/");
+        assert!(root_path.is_absolute());
+
+        let file_path = FilePath::import_path(Path::new("..")).unwrap();
+        assert!(file_path.is_relative());
+        assert_eq!(file_path.root(), empty_root_path);
+        assert_eq!(file_path.relative(), RelativePath::new(".."));
+
+        let file_path = FilePath::import_path(&root_path.join("..")).unwrap();
+        assert!(!file_path.is_relative());
+        assert_eq!(file_path.root(), root_path);
+        assert_eq!(file_path.relative(), RelativePath::new(".."));
+
+        let file_path = FilePath::import_path(Path::new("lorem")).unwrap();
+        assert!(file_path.is_relative());
+        assert_eq!(file_path.root(), empty_root_path);
+        assert_eq!(file_path.relative(), RelativePath::new("lorem"));
+
+        let file_path = FilePath::import_path(&root_path.join("lorem")).unwrap();
+        assert!(!file_path.is_relative());
+        assert_eq!(file_path.root(), root_path);
+        assert_eq!(file_path.relative(), RelativePath::new("lorem"));
+    }
 }

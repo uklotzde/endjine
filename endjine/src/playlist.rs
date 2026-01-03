@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::{
-    borrow::{Borrow, Cow},
-    path::Path,
-};
+use std::borrow::{Borrow, Cow};
 
 use anyhow::{Context as _, bail};
 use futures_util::{
@@ -17,7 +14,7 @@ use sqlx::{
     FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
 };
 
-use crate::{DbUuid, Track, TrackId, TrackRef, normalize_track_file_path};
+use crate::{DbUuid, FilePath, Track, TrackId, TrackRef, import_track_file_path};
 
 crate::db_id!(PlaylistId);
 
@@ -200,13 +197,13 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
     base_path: &RelativePath,
-    track_paths: impl IntoIterator<Item = &'p Path>,
+    track_paths: impl IntoIterator<Item = FilePath<'p>>,
 ) -> anyhow::Result<Vec<PlaylistTrackRef>> {
     let track_refs_fut = track_paths
         .into_iter()
         .map(|track_path| {
-            normalize_track_file_path(base_path, track_path)
-                .map(|(_root_path, track_path)| async move {
+            import_track_file_path(base_path, track_path)
+                .map(|track_path| async move {
                     let track_ref = Track::find_ref_by_path(pool, &track_path)
                         .await
                         .with_context(|| {
@@ -217,12 +214,7 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
                     };
                     PlaylistTrackRef::new(track_ref, local_database_uuid)
                 })
-                .with_context(|| {
-                    format!(
-                        "resolve track path \"{track_path}\"",
-                        track_path = track_path.display(),
-                    )
-                })
+                .context("import track file path \"{track_path}\"")
         })
         .collect::<anyhow::Result<FuturesOrdered<_>>>()?;
     track_refs_fut.try_collect::<Vec<_>>().await

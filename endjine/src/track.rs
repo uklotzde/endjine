@@ -6,12 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::anyhow;
+use anyhow::bail;
 use futures_util::stream::BoxStream;
 use relative_path::RelativePath;
 use sqlx::{FromRow, SqliteExecutor};
 
-use crate::{AlbumArtId, DbUuid, UnixTimestamp, split_and_normalize_file_path};
+use crate::{AlbumArtId, DbUuid, FilePath, UnixTimestamp};
 
 crate::db_id!(TrackId);
 
@@ -85,22 +85,9 @@ impl Track {
     /// the column value could safely be set to NULL.
     pub const DEFAULT_ALBUM_ART: &str = "image://planck/0";
 
-    /// Splits the database file path into a root path and the relat the base path for all relative track paths in the database.
-    ///
-    /// Returns a tuple with both the `root_path` and the relative `base_path`. The `root_path`
-    /// is empty if the database file path is relative.
     #[must_use]
-    pub fn split_root_base_path(
-        database_file_path: &Path,
-    ) -> Option<(PathBuf, Cow<'_, RelativePath>)> {
-        let (root_path, database_path) = split_and_normalize_file_path(database_file_path);
-        let base_path = match database_path {
-            Cow::Borrowed(database_path) => grandparent_path(database_path).map(Cow::Borrowed),
-            Cow::Owned(database_path) => grandparent_path(&database_path)
-                .map(RelativePath::to_relative_path_buf)
-                .map(Cow::Owned),
-        };
-        base_path.map(|base_path| (root_path, base_path))
+    pub fn database_to_base_path(db_file_path: &FilePath<'_>) -> Option<FilePath<'static>> {
+        grandparent_file_path(db_file_path)
     }
 
     /// Determines the file path given the base path.
@@ -166,49 +153,44 @@ impl Track {
 
 pub const RELATIVE_TRACK_PATH_PREFIX: &str = "..";
 
-pub fn normalize_track_file_path<'p>(
+pub fn import_track_file_path<'p>(
     base_path: &RelativePath,
-    track_file_path: &'p Path,
-) -> anyhow::Result<(PathBuf, Cow<'p, RelativePath>)> {
+    mut file_path: FilePath<'p>,
+) -> anyhow::Result<Cow<'p, RelativePath>> {
     debug_assert!(base_path.is_normalized());
-    let (root_path, normalized_track_path) = split_and_normalize_file_path(track_file_path);
-    if track_file_path.is_relative() {
-        if normalized_track_path.starts_with(RELATIVE_TRACK_PATH_PREFIX) {
+    if file_path.is_relative() {
+        if file_path.relative().starts_with(RELATIVE_TRACK_PATH_PREFIX) {
             // Leave relative with matching prefix as is.
-            return Ok((root_path, normalized_track_path));
+            return Ok(file_path.into_relative());
         }
-        return Ok((
-            root_path,
-            Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join(normalized_track_path)),
-        ));
+        file_path.add_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
+        return Ok(file_path.into_relative());
     }
-    debug_assert!(track_file_path.is_absolute());
-    let relative_path = normalized_track_path
-        .strip_prefix(base_path)
-        .map_err(|_| anyhow!("strip base path prefix"))?;
-    Ok((
-        root_path,
-        Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join(relative_path)),
-    ))
+    if !file_path.strip_relative_prefix(base_path) {
+        bail!("base path mismatch");
+    }
+    file_path.add_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
+    Ok(file_path.into_relative())
 }
 
 #[must_use]
-fn grandparent_path(path: &RelativePath) -> Option<&RelativePath> {
-    path.parent().and_then(RelativePath::parent)
+fn grandparent_file_path<'a>(file_path: &'a FilePath<'a>) -> Option<FilePath<'static>> {
+    let parent_path = file_path.to_parent_path()?;
+    parent_path.to_parent_path().map(FilePath::into_owned)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{borrow::Cow, path::PathBuf};
+    use std::path::Path;
+
+    use relative_path::RelativePath;
+
+    use crate::FilePath;
+
+    use super::RELATIVE_TRACK_PATH_PREFIX;
 
     #[test]
-    fn normalize_track_file_path() {
-        use std::path::Path;
-
-        use relative_path::RelativePath;
-
-        use crate::track::RELATIVE_TRACK_PATH_PREFIX;
-
+    fn import_track_file_path() {
         #[cfg(target_os = "windows")]
         let root_path = Path::new("C:\\");
         #[cfg(not(target_os = "windows"))]
@@ -218,75 +200,70 @@ mod tests {
         let base_path = RelativePath::new("foo/bar").to_relative_path_buf();
         let abs_base_path = base_path.to_path(root_path);
 
-        // Resolvable paths.
+        // Valid paths.
         assert_eq!(
-            super::normalize_track_file_path(&base_path, Path::new(RELATIVE_TRACK_PATH_PREFIX))
-                .unwrap(),
-            (
-                PathBuf::new(),
-                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
-            )
-        );
-        assert_eq!(
-            super::normalize_track_file_path(&base_path, &abs_base_path).unwrap(),
-            (
-                root_path.to_path_buf(),
-                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
-            )
-        );
-        assert_eq!(
-            super::normalize_track_file_path(&base_path, &abs_base_path.join("lorem")).unwrap(),
-            (
-                root_path.to_path_buf(),
-                Cow::Owned(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem"))
-            )
-        );
-        assert_eq!(
-            super::normalize_track_file_path(
+            super::import_track_file_path(
                 &base_path,
-                &abs_base_path.join("lorem").join("ipsum")
+                FilePath::import_path(RELATIVE_TRACK_PATH_PREFIX).unwrap()
             )
             .unwrap(),
-            (
-                root_path.to_path_buf(),
-                Cow::Owned(
-                    RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
-                        .join("lorem")
-                        .join("ipsum")
-                )
-            )
+            RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
-            super::normalize_track_file_path(
+            super::import_track_file_path(
                 &base_path,
-                &abs_base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar")
+                FilePath::import_path(&abs_base_path).unwrap()
             )
             .unwrap(),
-            (
-                root_path.to_path_buf(),
-                Cow::Borrowed(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX))
+            RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
+        );
+        assert_eq!(
+            super::import_track_file_path(
+                &base_path,
+                FilePath::import_path(&abs_base_path.join("lorem")).unwrap()
             )
+            .unwrap(),
+            RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem")
+        );
+        assert_eq!(
+            super::import_track_file_path(
+                &base_path,
+                FilePath::import_path(&abs_base_path.join("lorem").join("ipsum")).unwrap()
+            )
+            .unwrap(),
+            RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
+                .join("lorem")
+                .join("ipsum")
+        );
+        assert_eq!(
+            super::import_track_file_path(
+                &base_path,
+                FilePath::import_path(&abs_base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar"))
+                    .unwrap()
+            )
+            .unwrap(),
+            RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
 
-        // Unresolvable paths.
+        // Invalid paths.
         assert!(
-            super::normalize_track_file_path(
+            super::import_track_file_path(
                 &base_path,
-                &RelativePath::new("foo").to_path(root_path)
+                FilePath::import_path(&RelativePath::new("foo").to_path(root_path)).unwrap()
             )
             .is_err()
         );
         assert!(
-            super::normalize_track_file_path(
+            super::import_track_file_path(
                 &base_path,
-                &RelativePath::new("bar").to_path(root_path)
+                FilePath::import_path(&RelativePath::new("bar").to_path(root_path)).unwrap()
             )
             .is_err()
         );
         assert!(
-            super::normalize_track_file_path(
+            super::import_track_file_path(
                 &base_path,
-                &RelativePath::new("bar/foo").to_path(root_path)
+                FilePath::import_path(&RelativePath::new("bar/foo").to_path(root_path)).unwrap()
             )
             .is_err()
         );
