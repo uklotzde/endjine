@@ -3,7 +3,7 @@
 
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow
 
-# Same as file name
+# Same as file name.
 name: pre-commit
 
 permissions:
@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
 
 env:
-  # Disable incremental compilation for faster from-scratch builds
+  # Disable incremental compilation for faster from-scratch builds.
   CARGO_INCREMENTAL: 0
-  # Disable debug info to improve cache efficiency
+  # Disable debug info to improve cache efficiency.
   CARGO_PROFILE_TEST_DEBUG: 0
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
@@ -49,7 +49,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # The cache should not be shared between different workflows and jobs.
-          shared-key: ${{ github.workflow }}-${{ github.job }}
+          # Use separate cache per target so that faster runner does not get exclusive cache.
+          shared-key: ${{ github.workflow }}-${{ github.job }}-${{ matrix.target }}
 
       - name: Detect code style issues
         uses: pre-commit/action@v3.0.1
