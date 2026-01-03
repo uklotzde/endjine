@@ -104,7 +104,7 @@ jobs:
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v6
         with:
-          name: endjine-cli-${{ matrix.cli_arch }}
+          name: endjine-cli-${{ matrix.cli_arch }}.zip
           # Expect explicit path to folder in `target/`, because target was named by cross-compilation
           # tool-chain.
           path: target/${{ matrix.target }}/release/endjine${{ matrix.cli_ext }}
