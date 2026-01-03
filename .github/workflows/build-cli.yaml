@@ -40,27 +40,21 @@ jobs:
           - target: aarch64-apple-darwin
             runner_os: macos-latest
             cli_arch: macos-arm64
-            cli_ext: ""
           - target: aarch64-pc-windows-msvc
             runner_os: windows-latest
             cli_arch: windows-arm64
-            cli_ext: ".exe"
           - target: aarch64-unknown-linux-musl
             runner_os: ubuntu-latest
             cli_arch: linux-arm64
-            cli_ext: ""
           - target: armv7-unknown-linux-musleabihf
             runner_os: ubuntu-latest
             cli_arch: linux-armv7
-            cli_ext: ""
           - target: x86_64-pc-windows-msvc
             runner_os: windows-latest
             cli_arch: windows-amd64
-            cli_ext: ".exe"
           - target: x86_64-unknown-linux-musl
             runner_os: ubuntu-latest
             cli_arch: linux-amd64
-            cli_ext: ""
 
     runs-on: ${{ matrix.runner_os }}
 
@@ -101,11 +95,19 @@ jobs:
           -p endjine-cli
           --profile release
 
-      - name: Prepare release artifact
+      - name: Prepare release artifact (*nix)
+        if: ${{ !startsWith(matrix.runner_os, 'windows') }}
         # Expect explicit path to folder in `target/`, because target was named by cross-compilation
         # tool-chain.
         run: |-
-          zip endjine-cli-${{ matrix.cli_arch }}.zip target/${{ matrix.target }}/release/endjine${{ matrix.cli_ext }}
+          zip endjine-cli-${{ matrix.cli_arch }}.zip target/${{ matrix.target }}/release/endjine
+
+      - name: Prepare release artifact (Windows)
+        if: startsWith(matrix.runner_os, 'windows')
+        # Expect explicit path to folder in `target/`, because target was named by cross-compilation
+        # tool-chain.
+        run: |-
+          7z a endjine-cli-${{ matrix.cli_arch }}.zip target/${{ matrix.target }}/release/endjine.exe
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v6
