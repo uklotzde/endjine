@@ -3,7 +3,7 @@
 
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow
 
-# Same as file name
+# Same as file name.
 name: test
 
 permissions:
@@ -17,12 +17,17 @@ on:
   workflow_dispatch:
 
 env:
-  # Disable incremental compilation for faster from-scratch builds
+  # Disable incremental compilation for faster from-scratch builds.
   CARGO_INCREMENTAL: 0
-  # Disable debug info to improve cache efficiency
+  # Disable debug info to improve cache efficiency.
   CARGO_PROFILE_TEST_DEBUG: 0
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Let side effects of existing run finish.
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -58,6 +63,10 @@ jobs:
       - name: Install cross-compilation tools
         uses: taiki-e/setup-cross-toolchain-action@v1
         with:
+          # Setting the target sets the `CARGO_BUILD_TARGET` environment variable,
+          # so there is no need for an explicit `--target` flag in each build step.
+          # This is required for both native and cross-platform builds to avoid
+          # using the default target of the runner.
           target: ${{ matrix.target }}
 
       - name: Check out repository
@@ -65,15 +74,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Generate Cargo.lock
-        run: cargo generate-lockfile
-
       - name: Cache Rust toolchain and build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           # The cache should not be shared between different workflows and jobs.
-          shared-key: ${{ github.workflow }}-${{ github.job }}
+          # Use separate cache per target so that faster runner does not get exclusive cache.
+          shared-key: ${{ github.workflow }}-${{ github.job }}-${{ matrix.target }}
 
       - name: Run tests
         if: matrix.target != 'aarch64-pc-windows-msvc'
-        run: cargo test --locked --all-features
+        run: cargo test --locked --workspace --all-features

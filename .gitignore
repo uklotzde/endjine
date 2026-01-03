@@ -7,9 +7,6 @@
 # .gitignore file that can be configured by setting core.excludesFile.
 # See also: https://git-scm.com/docs/gitignore
 
-# Cargo artifacts
-Cargo.lock
-
 # Build directories (or a symbolic link, i.e. without a trailing slash)
 /target
 
