@@ -101,12 +101,17 @@ jobs:
           -p endjine-cli
           --profile release
 
+      - name: Prepare CLI artifact for upload
+        # Strip path from CLI executable before upload by moving it into the root directory.
+        # Rename the library directory to avoid naming conflicts with the moved CLI executable.
+        run: |-
+          mv endjine endjine.dir
+          mv target/${{ matrix.target }}/release/endjine${{ matrix.cli_ext }} .
+
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v6
         with:
           name: endjine-cli-${{ matrix.cli_arch }}
-          # Expect explicit path to folder in `target/`, because target was named by cross-compilation
-          # tool-chain.
-          path: target/${{ matrix.target }}/release/endjine${{ matrix.cli_ext }}
+          path: endjine${{ matrix.cli_ext }}
           if-no-files-found: error
           retention-days: 30
