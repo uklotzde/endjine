@@ -39,6 +39,10 @@ repos:
     hooks:
       - id: check-github-actions
       - id: check-github-workflows
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.1
+    hooks:
+      - id: check-json5
   # Markdown
   # TODO: Remove unmaintained Prettier plugin.
   - repo: https://github.com/pre-commit/mirrors-prettier
