@@ -12,6 +12,8 @@ use std::{
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt as _;
+#[cfg(debug_assertions)]
+use log::LevelFilter;
 use relative_path::RelativePath;
 use sqlx::{SqliteExecutor, SqlitePool};
 
@@ -20,6 +22,14 @@ use endjine::{
     PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
     open_database, resolve_playlist_track_refs_from_file_paths,
 };
+
+/// Default log level for debug builds.
+#[cfg(debug_assertions)]
+const DEFAULT_LOG_FILTER_LEVEL: LevelFilter = LevelFilter::Debug;
+
+/// Reduce log verbosity for release builds.
+#[cfg(not(debug_assertions))]
+const DEFAULT_LOG_FILTER_LEVEL: LevelFilter = LevelFilter::Info;
 
 const DEFAULT_DB_FILE: &str = "m.db";
 
@@ -92,7 +102,11 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
     let _unused = colored::control::set_virtual_terminal(true);
 
-    env_logger::init();
+    env_logger::Builder::new()
+        .filter_level(DEFAULT_LOG_FILTER_LEVEL)
+        // Parse environment variables after configuring all default option(s).
+        .parse_default_env()
+        .init();
 
     let Args { db_file, command } = Args::parse();
 
