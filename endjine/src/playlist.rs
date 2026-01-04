@@ -202,7 +202,7 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     let track_refs_fut = track_paths
         .into_iter()
         .map(|track_path| {
-            import_track_file_path(base_path, track_path)
+            import_track_file_path(base_path, track_path.clone())
                 .map(|track_path| async move {
                     let track_ref = Track::find_ref_by_path(pool, &track_path)
                         .await
@@ -214,7 +214,7 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
                     };
                     PlaylistTrackRef::new(track_ref, local_database_uuid)
                 })
-                .context("import track file path \"{track_path}\"")
+                .with_context(|| format!("import track file path \"{track_path}\""))
         })
         .collect::<anyhow::Result<FuturesOrdered<_>>>()?;
     track_refs_fut.try_collect::<Vec<_>>().await

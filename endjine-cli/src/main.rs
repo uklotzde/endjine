@@ -589,9 +589,13 @@ async fn import_m3u_playlist(
     m3u_file_path: &Path,
     m3u_base_path: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let track_file_paths =
-        import_m3u_playlist_entries(m3u_file_path, m3u_base_path.unwrap_or(m3u_file_path))
-            .context("import M3U playlist entries")?;
+    let m3u_base_path = m3u_base_path.unwrap_or(m3u_file_path);
+    log::info!(
+        "M3U base path: {m3u_base_path}",
+        m3u_base_path = m3u_base_path.display()
+    );
+    let track_file_paths = import_m3u_playlist_entries(m3u_file_path, m3u_base_path)
+        .context("import M3U playlist entries")?;
 
     log::info!(
         "Resolving paths of {entry_count} entry(ies) in M3U playlist",
