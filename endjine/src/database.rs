@@ -8,12 +8,12 @@ use sqlx::SqlitePool;
 use crate::{DbUuid, Information};
 
 pub async fn open_database(
-    database_path: impl AsRef<Path>,
+    file_path: impl AsRef<Path>,
     db_uuid: Option<&DbUuid>,
 ) -> sqlx::Result<(SqlitePool, Information)> {
     let database_url = format!(
-        "sqlite:{database_path}",
-        database_path = database_path.as_ref().display()
+        "sqlite:{file_path}",
+        file_path = file_path.as_ref().display()
     );
     let pool = SqlitePool::connect(&database_url).await?;
     let info = if let Some(db_uuid) = &db_uuid {

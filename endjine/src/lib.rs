@@ -12,6 +12,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+use anyhow::bail;
 use relative_path::{RelativePath, RelativePathBuf};
 
 pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
@@ -58,9 +59,7 @@ pub use self::smartlist::{
 };
 
 mod track;
-pub use self::track::{
-    RELATIVE_TRACK_PATH_PREFIX, Track, TrackId, TrackRef, import_track_file_path,
-};
+pub use self::track::{Track, TrackId, TrackRef, import_track_file_path};
 
 mod unix_timestamp;
 pub use self::unix_timestamp::UnixTimestamp;
@@ -223,6 +222,32 @@ impl fmt::Display for FilePath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.to_path().display().fmt(f)
     }
+}
+
+pub(crate) const LIBRARY_DIRECTORY_NAME: &str = "Engine Library";
+
+/// Determines the directory that contains the _Engine Library_.
+pub fn database_file_to_library_path(
+    db_file_path: &FilePath<'_>,
+) -> anyhow::Result<FilePath<'static>> {
+    let Some(library_path) = grandparent_file_path(db_file_path) else {
+        bail!("invalid database file path");
+    };
+    let Some(dir_name) = library_path.relative().file_name() else {
+        // The (relative) library path must not be empty.
+        debug_assert!(library_path.relative().as_str().is_empty());
+        bail!("invalid library directory");
+    };
+    if !dir_name.eq_ignore_ascii_case(LIBRARY_DIRECTORY_NAME) {
+        bail!("invalid library directory name \"{dir_name}\"");
+    }
+    Ok(library_path)
+}
+
+#[must_use]
+fn grandparent_file_path<'a>(file_path: &'a FilePath<'a>) -> Option<FilePath<'static>> {
+    let parent_path = file_path.to_parent_path()?;
+    parent_path.to_parent_path().map(FilePath::into_owned)
 }
 
 #[cfg(test)]

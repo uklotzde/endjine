@@ -19,7 +19,7 @@ use sqlx::{SqliteExecutor, SqlitePool};
 use endjine::{
     AlbumArt, BatchOutcome, DbUuid, FilePath, Historylist, HistorylistEntity, Information,
     PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
-    open_database, resolve_playlist_track_refs_from_file_paths,
+    database_file_to_library_path, open_database, resolve_playlist_track_refs_from_file_paths,
 };
 
 /// Default log level for debug builds.
@@ -36,6 +36,8 @@ const DEFAULT_DB_FILE: &str = "m.db";
 enum Command {
     /// Scan database for consistency and missing or inaccessible track files (read-only).
     Analyze,
+    /// Find missing or inaccessible track files (read-only).
+    FindMissingTracks,
     /// Import playlist from M3U file.
     ImportPlaylist(ImportPlaylistArgs),
     /// Delete all empty playlists.
@@ -135,7 +137,17 @@ async fn main() -> anyhow::Result<()> {
             bail!("aborted");
         }
     };
+
     let db_file_path = FilePath::import_path(&db_file_path);
+    let library_path = match database_file_to_library_path(&db_file_path) {
+        Ok(library_path) => library_path,
+        Err(err) => {
+            log::warn!(
+                "Failed to determine library directory from database file path \"{db_file_path}\": {err:#}"
+            );
+            return Ok(());
+        }
+    };
 
     let info = Information::load(|| &pool).await?;
     log::info!("Database UUID: {uuid}", uuid = info.uuid());
@@ -151,14 +163,9 @@ async fn main() -> anyhow::Result<()> {
                 historylist_entity_scan(&pool).await;
             }
             performance_data_scan(&pool).await;
-            // Find missing or inaccessible track files.
-            if let Some(base_path) = Track::database_to_base_path(&db_file_path) {
-                find_track_file_issues(&pool, base_path.to_path()).await;
-            } else {
-                log::warn!(
-                    "Cannot resolve track base path from database file path \"{db_file_path}\""
-                );
-            }
+        }
+        Command::FindMissingTracks => {
+            find_track_file_issues(&pool, library_path.to_path()).await;
         }
         Command::DeleteEmptyPlaylists => {
             playlist_delete_empty(&pool).await;
@@ -176,30 +183,26 @@ async fn main() -> anyhow::Result<()> {
             m3u_base_path,
         }) => {
             let mode = mode.unwrap_or_default();
-            if let Some(track_base_path) = Track::database_to_base_path(&db_file_path) {
-                debug_assert!(!track_base_path.is_relative());
-                log::info!("Track base path: {track_base_path}");
-                match import_m3u_playlist(
-                    &pool,
-                    *info.uuid(),
-                    track_base_path.relative(),
-                    &playlist_path,
-                    mode,
-                    &m3u_file,
-                    m3u_base_path.as_deref(),
-                )
-                .await
-                {
-                    Ok(()) => (),
-                    Err(err) => {
-                        log::error!(
-                            "Failed to import M3U playlist from \"{m3u_file}\": {err:#}",
-                            m3u_file = m3u_file.display()
-                        );
-                    }
+            debug_assert!(!library_path.is_relative());
+            log::info!("Library path: {library_path}");
+            match import_m3u_playlist(
+                &pool,
+                *info.uuid(),
+                library_path.relative(),
+                &playlist_path,
+                mode,
+                &m3u_file,
+                m3u_base_path.as_deref(),
+            )
+            .await
+            {
+                Ok(()) => (),
+                Err(err) => {
+                    log::error!(
+                        "Failed to import M3U playlist from \"{m3u_file}\": {err:#}",
+                        m3u_file = m3u_file.display()
+                    );
                 }
-            } else {
-                log::warn!("Cannot resolve base path from database path");
             }
         }
         Command::Housekeeping => {
@@ -410,9 +413,9 @@ async fn performance_data_scan(pool: &SqlitePool) {
     }
 }
 
-async fn find_track_file_issues(pool: &SqlitePool, base_path: PathBuf) {
+async fn find_track_file_issues(pool: &SqlitePool, library_path: PathBuf) {
     log::info!("Track: Scanning for file issues...");
-    batch::find_track_file_issues(pool, base_path)
+    batch::find_track_file_issues(pool, library_path)
         .for_each(|next_result| {
             match next_result {
                 Ok(batch::TrackFileIssueItem { db_id, db_path, file_path, file_issue }) => match file_issue {
@@ -590,7 +593,7 @@ fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
 async fn import_m3u_playlist(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    track_base_path: &RelativePath,
+    library_path: &RelativePath,
     playlist_path: &str,
     mode: ImportPlaylistMode,
     m3u_file_path: &Path,
@@ -614,7 +617,7 @@ async fn import_m3u_playlist(
     let track_refs = resolve_playlist_track_refs_from_file_paths(
         pool,
         local_database_uuid,
-        track_base_path,
+        library_path,
         track_file_paths.into_iter(),
     )
     .await?;

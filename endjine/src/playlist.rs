@@ -196,13 +196,13 @@ impl Playlist {
 pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    base_path: &RelativePath,
+    library_path: &RelativePath,
     track_paths: impl IntoIterator<Item = FilePath<'p>>,
 ) -> anyhow::Result<Vec<PlaylistTrackRef>> {
     let track_refs_fut = track_paths
         .into_iter()
         .map(|track_path| {
-            import_track_file_path(base_path, track_path.clone())
+            import_track_file_path(library_path, track_path.clone())
                 .map(|track_path| async move {
                     let track_ref = Track::find_ref_by_path(pool, &track_path)
                         .await

@@ -11,7 +11,7 @@ use futures_util::stream::BoxStream;
 use relative_path::RelativePath;
 use sqlx::{FromRow, SqliteExecutor};
 
-use crate::{AlbumArtId, DbUuid, FilePath, UnixTimestamp};
+use crate::{AlbumArtId, DbUuid, FilePath, LIBRARY_DIRECTORY_NAME, UnixTimestamp};
 
 crate::db_id!(TrackId);
 
@@ -85,19 +85,14 @@ impl Track {
     /// the column value could safely be set to NULL.
     pub const DEFAULT_ALBUM_ART: &str = "image://planck/0";
 
-    #[must_use]
-    pub fn database_to_base_path(db_file_path: &FilePath<'_>) -> Option<FilePath<'static>> {
-        grandparent_file_path(db_file_path)
-    }
-
-    /// Determines the file path given the base path.
+    /// Determines the file path given the library path.
     ///
     /// The resulting path is not canonicalized.
     #[must_use]
-    pub fn file_path(&self, base_path: &Path) -> Option<PathBuf> {
+    pub fn to_file_path(&self, library_path: &Path) -> Option<PathBuf> {
         self.path
             .as_ref()
-            .map(|path| RelativePath::new(path).to_path(base_path))
+            .map(|path| RelativePath::new(path).to_path(library_path))
     }
 
     /// Fetches all [`Track`]s asynchronously.
@@ -151,13 +146,19 @@ impl Track {
     }
 }
 
-pub const RELATIVE_TRACK_PATH_PREFIX: &str = "..";
+/// Parent directory of "Engine Library".
+const RELATIVE_TRACK_PATH_PREFIX: &str = "..";
 
 pub fn import_track_file_path<'p>(
-    base_path: &RelativePath,
+    library_path: &RelativePath,
     mut file_path: FilePath<'p>,
 ) -> anyhow::Result<Cow<'p, RelativePath>> {
-    debug_assert!(base_path.is_normalized());
+    debug_assert!(library_path.is_normalized());
+    debug_assert!(
+        library_path
+            .file_name()
+            .is_some_and(|file_name| file_name.eq_ignore_ascii_case(LIBRARY_DIRECTORY_NAME))
+    );
     if file_path.is_relative() {
         if file_path.relative().starts_with(RELATIVE_TRACK_PATH_PREFIX) {
             // Leave relative with matching prefix as is.
@@ -166,17 +167,14 @@ pub fn import_track_file_path<'p>(
         file_path.add_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
         return Ok(file_path.into_relative());
     }
+    let Some(base_path) = library_path.parent() else {
+        bail!("invalid library path");
+    };
     if !file_path.strip_relative_prefix(base_path) {
-        bail!("base path mismatch");
+        bail!("mismatching base path \"{base_path}\"");
     }
     file_path.add_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
     Ok(file_path.into_relative())
-}
-
-#[must_use]
-fn grandparent_file_path<'a>(file_path: &'a FilePath<'a>) -> Option<FilePath<'static>> {
-    let parent_path = file_path.to_parent_path()?;
-    parent_path.to_parent_path().map(FilePath::into_owned)
 }
 
 #[cfg(test)]
@@ -185,7 +183,7 @@ mod tests {
 
     use relative_path::RelativePath;
 
-    use crate::FilePath;
+    use crate::{FilePath, LIBRARY_DIRECTORY_NAME};
 
     use super::RELATIVE_TRACK_PATH_PREFIX;
 
@@ -200,23 +198,28 @@ mod tests {
         let base_path = RelativePath::new("foo/bar").to_relative_path_buf();
         let abs_base_path = base_path.to_path(root_path);
 
+        let library_path = FilePath::import_path(&abs_base_path.join(LIBRARY_DIRECTORY_NAME));
+
         // Valid paths.
         assert_eq!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(RELATIVE_TRACK_PATH_PREFIX)
             )
             .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
-            super::import_track_file_path(&base_path, FilePath::import_path(&abs_base_path))
-                .unwrap(),
+            super::import_track_file_path(
+                library_path.relative(),
+                FilePath::import_path(&abs_base_path)
+            )
+            .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&abs_base_path.join("lorem"))
             )
             .unwrap(),
@@ -224,7 +227,7 @@ mod tests {
         );
         assert_eq!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&abs_base_path.join("lorem").join("ipsum"))
             )
             .unwrap(),
@@ -234,7 +237,7 @@ mod tests {
         );
         assert_eq!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&abs_base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar"))
             )
             .unwrap(),
@@ -244,21 +247,21 @@ mod tests {
         // Invalid paths.
         assert!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&RelativePath::new("foo").to_path(root_path))
             )
             .is_err()
         );
         assert!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&RelativePath::new("bar").to_path(root_path))
             )
             .is_err()
         );
         assert!(
             super::import_track_file_path(
-                &base_path,
+                library_path.relative(),
                 FilePath::import_path(&RelativePath::new("bar/foo").to_path(root_path))
             )
             .is_err()

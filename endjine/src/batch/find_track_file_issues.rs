@@ -30,12 +30,11 @@ pub struct TrackFileIssueItem {
 /// Finds track file issues.
 ///
 /// Track file paths in the database are relative to the path of the
-/// database file. The `base_path` refers to the "Engine Library"
-/// directory.
+/// database file.
 #[must_use]
 pub fn find_track_file_issues<'a>(
     executor: impl SqliteExecutor<'a> + 'a,
-    base_path: PathBuf,
+    library_path: PathBuf,
 ) -> BoxStream<'a, sqlx::Result<TrackFileIssueItem>> {
     sqlx::query_as::<_, (TrackId, String)>(
         r#"SELECT "id","path" FROM "Track" WHERE "path" IS NOT NULL"#,
@@ -50,7 +49,7 @@ pub fn find_track_file_issues<'a>(
             }
         };
         log::debug!("Checking path \"{db_path}\" of track {db_id}");
-        let mut file_path = base_path.join(&db_path);
+        let mut file_path = library_path.join(&db_path);
         let file_issue = block_in_place(||
                 // Blocking file I/O operations.
                 match check_file_exists(&mut file_path) {
