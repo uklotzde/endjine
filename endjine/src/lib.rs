@@ -233,24 +233,37 @@ mod tests {
         let root_path = Path::new("/");
         assert!(root_path.is_absolute());
 
-        let file_path = FilePath::import_path(Path::new("..")).unwrap();
+        //
+        // 1 path segment without a separator (relative/absolute).
+        //
+
+        for path_segment in ["..", "foo"] {
+            let file_path = FilePath::import_path(path_segment).unwrap();
+            assert!(file_path.is_relative());
+            assert_eq!(file_path.root(), empty_root_path);
+            assert_eq!(file_path.relative(), RelativePath::new(path_segment));
+
+            let file_path = FilePath::import_path(&root_path.join(path_segment)).unwrap();
+            assert!(!file_path.is_relative());
+            assert_eq!(file_path.root(), root_path);
+            assert_eq!(file_path.relative(), RelativePath::new(path_segment));
+        }
+
+        //
+        // Multiple path segments with a separator (relative/absolute).
+        //
+
+        let file_path =
+            FilePath::import_path(&Path::new("..").join("foo").join("bar").join("..")).unwrap();
         assert!(file_path.is_relative());
         assert_eq!(file_path.root(), empty_root_path);
-        assert_eq!(file_path.relative(), RelativePath::new(".."));
+        assert_eq!(file_path.relative(), RelativePath::new("../foo"));
 
-        let file_path = FilePath::import_path(&root_path.join("..")).unwrap();
+        let file_path =
+            FilePath::import_path(&root_path.join("..").join("foo").join("bar").join(".."))
+                .unwrap();
         assert!(!file_path.is_relative());
         assert_eq!(file_path.root(), root_path);
-        assert_eq!(file_path.relative(), RelativePath::new(".."));
-
-        let file_path = FilePath::import_path(Path::new("lorem")).unwrap();
-        assert!(file_path.is_relative());
-        assert_eq!(file_path.root(), empty_root_path);
-        assert_eq!(file_path.relative(), RelativePath::new("lorem"));
-
-        let file_path = FilePath::import_path(&root_path.join("lorem")).unwrap();
-        assert!(!file_path.is_relative());
-        assert_eq!(file_path.root(), root_path);
-        assert_eq!(file_path.relative(), RelativePath::new("lorem"));
+        assert_eq!(file_path.relative(), RelativePath::new("../foo"));
     }
 }
