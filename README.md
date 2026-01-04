@@ -9,7 +9,7 @@
 [![Testing](https://github.com/uklotzde/endjine/actions/workflows/test.yaml/badge.svg)](https://github.com/uklotzde/endjine/actions/workflows/test.yaml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-blue.svg)](https://opensource.org/licenses/MPL-2.0)
 
-A Rust crate for accessing the [Engine DJ](https://enginedj.com/) library database.
+A Rust crate for managing the [Engine DJ](https://enginedj.com/) library database.
 
 ## Development
 

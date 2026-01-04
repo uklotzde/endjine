@@ -3,7 +3,7 @@
 
 [package]
 name = "endjine"
-description = "Accessing the Engine DJ library database."
+description = "Managing the Engine DJ library database."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
