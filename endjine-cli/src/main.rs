@@ -78,6 +78,8 @@ struct ImportPlaylistArgs {
     m3u_file: PathBuf,
 
     /// Absolute base path for resolving relative paths in the M3U file.
+    ///
+    /// Defaults to the parent directory of the M3U file.
     #[arg(long)]
     m3u_base_path: Option<PathBuf>,
 }
@@ -549,7 +551,7 @@ async fn playlist_delete_empty(pool: &SqlitePool) {
 
 fn import_m3u_playlist_entries(
     file_path: &Path,
-    base_path: &Path,
+    base_path: Option<&Path>,
 ) -> anyhow::Result<Vec<FilePath<'static>>> {
     let reader = m3u::Reader::open(file_path)?;
     let mut reader = reader;
@@ -559,6 +561,12 @@ fn import_m3u_playlist_entries(
             entry_result.map_err(Into::into).and_then(|entry| {
                 let mut file_path = m3u_entry_file_path(&entry).context("M3U entry file path")?;
                 if file_path.is_relative() {
+                    let Some(base_path) = base_path else {
+                        bail!(
+                            "unresolved relative file path \"{file_path}\"",
+                            file_path = file_path.display()
+                        );
+                    };
                     file_path = Cow::Owned(base_path.join(file_path));
                 }
                 Ok(FilePath::import_path(&file_path))
@@ -588,11 +596,13 @@ async fn import_m3u_playlist(
     m3u_file_path: &Path,
     m3u_base_path: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let m3u_base_path = m3u_base_path.unwrap_or(m3u_file_path);
-    log::info!(
-        "M3U base path: {m3u_base_path}",
-        m3u_base_path = m3u_base_path.display()
-    );
+    let m3u_base_path = m3u_base_path.or(m3u_file_path.parent());
+    if let Some(m3u_base_path) = m3u_base_path {
+        log::info!(
+            "M3U base path: {m3u_base_path}",
+            m3u_base_path = m3u_base_path.display()
+        );
+    }
     let track_file_paths = import_m3u_playlist_entries(m3u_file_path, m3u_base_path)
         .context("import M3U playlist entries")?;
 
