@@ -13,13 +13,12 @@ use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt as _;
 use log::LevelFilter;
-use relative_path::RelativePath;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
     AlbumArt, BatchOutcome, DbUuid, FilePath, Historylist, HistorylistEntity, Information,
-    PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
-    database_file_to_library_path, open_database, resolve_playlist_track_refs_from_file_paths,
+    LibraryPath, PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track,
+    batch, open_database, resolve_playlist_track_refs_from_file_paths,
 };
 
 /// Default log level for debug builds.
@@ -139,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let db_file_path = FilePath::import_path(&db_file_path);
-    let library_path = match database_file_to_library_path(&db_file_path) {
+    let library_path = match LibraryPath::new(&db_file_path) {
         Ok(library_path) => library_path,
         Err(err) => {
             log::warn!(
@@ -188,7 +187,7 @@ async fn main() -> anyhow::Result<()> {
             match import_m3u_playlist(
                 &pool,
                 *info.uuid(),
-                library_path.relative(),
+                &library_path,
                 &playlist_path,
                 mode,
                 &m3u_file,
@@ -593,7 +592,7 @@ fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
 async fn import_m3u_playlist(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    library_path: &RelativePath,
+    library_path: &LibraryPath,
     playlist_path: &str,
     mode: ImportPlaylistMode,
     m3u_file_path: &Path,

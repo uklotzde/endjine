@@ -9,6 +9,7 @@ mod album_art;
 use std::{
     borrow::Cow,
     fmt,
+    ops::Deref,
     path::{Component, Path, PathBuf},
 };
 
@@ -184,14 +185,27 @@ impl FilePath<'_> {
         }
     }
 
-    pub(crate) fn add_relative_prefix<P>(&mut self, prefix: &P)
+    /// Appends a relative path in-place.
+    pub(crate) fn append_relative_suffix<P>(&mut self, suffix: &P)
+    where
+        P: ?Sized + AsRef<RelativePath>,
+    {
+        let Self { base: _, relative } = self;
+        *relative = Cow::Owned(relative.join_normalized(suffix));
+    }
+
+    /// Prepends a relative path in-place.
+    pub(crate) fn prepend_relative_prefix<P>(&mut self, prefix: &P)
     where
         P: AsRef<RelativePath> + ?Sized,
     {
         let Self { base: _, relative } = self;
-        *relative = prefix.as_ref().join_normalized(&relative).into();
+        *relative = Cow::Owned(prefix.as_ref().join_normalized(&relative));
     }
 
+    /// Strips a relative path prefix in-place.
+    ///
+    /// Returns `true` if modified and `false` on mismatch.
     #[must_use]
     pub(crate) fn strip_relative_prefix<P>(&mut self, prefix: &P) -> bool
     where
@@ -226,22 +240,64 @@ impl fmt::Display for FilePath<'_> {
 
 pub(crate) const LIBRARY_DIRECTORY_NAME: &str = "Engine Library";
 
-/// Determines the directory that contains the _Engine Library_.
-pub fn database_file_to_library_path(
-    db_file_path: &FilePath<'_>,
-) -> anyhow::Result<FilePath<'static>> {
-    let Some(library_path) = grandparent_file_path(db_file_path) else {
-        bail!("invalid database file path");
-    };
-    let Some(dir_name) = library_path.relative().file_name() else {
-        // The (relative) library path must not be empty.
-        debug_assert!(library_path.relative().as_str().is_empty());
-        bail!("invalid library directory");
-    };
-    if !dir_name.eq_ignore_ascii_case(LIBRARY_DIRECTORY_NAME) {
-        bail!("invalid library directory name \"{dir_name}\"");
+/// Directory that contains the _Engine Library_.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryPath(FilePath<'static>);
+
+impl LibraryPath {
+    /// Creates a new instance given the database file path.
+    ///
+    /// Does not verify that the resulting file path actually
+    /// references a directory.
+    pub fn new(db_file_path: &FilePath<'_>) -> anyhow::Result<Self> {
+        let Some(library_path) = grandparent_file_path(db_file_path) else {
+            bail!("invalid database file path");
+        };
+        let Some(dir_name) = library_path.relative().file_name() else {
+            // The (relative) library path must not be empty.
+            debug_assert!(library_path.relative().as_str().is_empty());
+            bail!("invalid library directory");
+        };
+        if !dir_name.eq_ignore_ascii_case(LIBRARY_DIRECTORY_NAME) {
+            bail!("invalid library directory name \"{dir_name}\"");
+        }
+        Ok(Self(library_path))
     }
-    Ok(library_path)
+
+    #[must_use]
+    pub const fn file_path(&self) -> &FilePath<'static> {
+        let Self(inner) = self;
+        inner
+    }
+}
+
+impl From<LibraryPath> for FilePath<'static> {
+    fn from(from: LibraryPath) -> Self {
+        let LibraryPath(inner) = from;
+        inner
+    }
+}
+
+impl AsRef<FilePath<'static>> for LibraryPath {
+    fn as_ref(&self) -> &FilePath<'static> {
+        let Self(inner) = self;
+        inner
+    }
+}
+
+impl Deref for LibraryPath {
+    type Target = FilePath<'static>;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl fmt::Display for LibraryPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self(inner) = self;
+        inner.fmt(f)
+    }
 }
 
 #[must_use]

@@ -9,12 +9,11 @@ use futures_util::{
     stream::{BoxStream, FuturesOrdered},
 };
 use itertools::Itertools;
-use relative_path::RelativePath;
 use sqlx::{
     FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
 };
 
-use crate::{DbUuid, FilePath, Track, TrackId, TrackRef, import_track_file_path};
+use crate::{DbUuid, FilePath, LibraryPath, Track, TrackId, TrackRef, import_track_file_path};
 
 crate::db_id!(PlaylistId);
 
@@ -196,7 +195,7 @@ impl Playlist {
 pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     pool: &SqlitePool,
     local_database_uuid: DbUuid,
-    library_path: &RelativePath,
+    library_path: &LibraryPath,
     track_paths: impl IntoIterator<Item = FilePath<'p>>,
 ) -> anyhow::Result<Vec<PlaylistTrackRef>> {
     let track_refs_fut = track_paths
