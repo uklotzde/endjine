@@ -12,7 +12,7 @@ use std::{
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt as _;
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePath;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
             bail!("aborted");
         }
     };
-    let db_file_path = FilePath::import_path(&db_file_path)?;
+    let db_file_path = FilePath::import_path(&db_file_path);
 
     let info = Information::load(|| &pool).await?;
     log::info!("Database UUID: {uuid}", uuid = info.uuid());
@@ -544,52 +544,25 @@ fn import_m3u_playlist_entries(
         .entries()
         .map(|entry_result| {
             entry_result.map_err(Into::into).and_then(|entry| {
-                let entry_path = M3uEntryPath::try_from(entry).context("import M3U entry path")?;
-                let file_path = match entry_path {
-                    M3uEntryPath::Absolute(file_path) => file_path,
-                    M3uEntryPath::Relative(relative_path) => relative_path.to_path(base_path),
-                };
-                FilePath::import_path(&file_path)
+                let mut file_path = m3u_entry_file_path(&entry).context("M3U entry file path")?;
+                if file_path.is_relative() {
+                    file_path = Cow::Owned(base_path.join(file_path));
+                }
+                Ok(FilePath::import_path(&file_path))
             })
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
-#[derive(Debug, Clone)]
-enum M3uEntryPath {
-    Absolute(PathBuf),
-    Relative(RelativePathBuf),
-}
-
-impl TryFrom<m3u::Entry> for M3uEntryPath {
-    type Error = anyhow::Error;
-
-    fn try_from(entry: m3u::Entry) -> Result<Self, Self::Error> {
-        let file_path = match entry {
-            m3u::Entry::Path(file_path) => file_path,
-            m3u::Entry::Url(url) => match url.to_file_path() {
-                Ok(path) => path,
-                Err(()) => {
-                    bail!("URL \"{url}\" is not a (local) file path");
-                }
-            },
-        };
-        let entry_path = match RelativePath::from_path(&file_path) {
-            Ok(_) => {
-                M3uEntryPath::Relative(RelativePathBuf::from_path(file_path).expect("infallible"))
+fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
+    match entry {
+        m3u::Entry::Path(file_path) => Ok(Cow::Borrowed(file_path)),
+        m3u::Entry::Url(url) => match url.to_file_path() {
+            Ok(file_path) => Ok(Cow::Owned(file_path)),
+            Err(()) => {
+                bail!("URL \"{url}\" is not a (local) file path");
             }
-            Err(_) => {
-                if file_path.is_absolute() {
-                    M3uEntryPath::Absolute(file_path)
-                } else {
-                    bail!(
-                        "unsupported file path \"{file_path}\"",
-                        file_path = file_path.display()
-                    );
-                }
-            }
-        };
-        Ok(entry_path)
+        },
     }
 }
 

@@ -204,23 +204,20 @@ mod tests {
         assert_eq!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(RELATIVE_TRACK_PATH_PREFIX).unwrap()
+                FilePath::import_path(RELATIVE_TRACK_PATH_PREFIX)
             )
             .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
-            super::import_track_file_path(
-                &base_path,
-                FilePath::import_path(&abs_base_path).unwrap()
-            )
-            .unwrap(),
+            super::import_track_file_path(&base_path, FilePath::import_path(&abs_base_path))
+                .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
         );
         assert_eq!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(&abs_base_path.join("lorem")).unwrap()
+                FilePath::import_path(&abs_base_path.join("lorem"))
             )
             .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX).join("lorem")
@@ -228,7 +225,7 @@ mod tests {
         assert_eq!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(&abs_base_path.join("lorem").join("ipsum")).unwrap()
+                FilePath::import_path(&abs_base_path.join("lorem").join("ipsum"))
             )
             .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
@@ -239,7 +236,6 @@ mod tests {
             super::import_track_file_path(
                 &base_path,
                 FilePath::import_path(&abs_base_path.join(RELATIVE_TRACK_PATH_PREFIX).join("bar"))
-                    .unwrap()
             )
             .unwrap(),
             RelativePath::new(RELATIVE_TRACK_PATH_PREFIX)
@@ -249,21 +245,21 @@ mod tests {
         assert!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(&RelativePath::new("foo").to_path(root_path)).unwrap()
+                FilePath::import_path(&RelativePath::new("foo").to_path(root_path))
             )
             .is_err()
         );
         assert!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(&RelativePath::new("bar").to_path(root_path)).unwrap()
+                FilePath::import_path(&RelativePath::new("bar").to_path(root_path))
             )
             .is_err()
         );
         assert!(
             super::import_track_file_path(
                 &base_path,
-                FilePath::import_path(&RelativePath::new("bar/foo").to_path(root_path)).unwrap()
+                FilePath::import_path(&RelativePath::new("bar/foo").to_path(root_path))
             )
             .is_err()
         );

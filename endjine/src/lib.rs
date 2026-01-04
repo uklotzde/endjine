@@ -72,20 +72,20 @@ pub use self::batch::BatchOutcome;
 
 /// Portable file path.
 ///
-/// Decomposed into root base path and (normalized) relative path.
+/// Decomposed into minimal base path and (normalized) relative path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePath<'a> {
-    root: Cow<'a, Path>,
+    base: Cow<'a, Path>,
     relative: Cow<'a, RelativePath>,
 }
 
 impl<'a> FilePath<'a> {
-    /// Root base path.
+    /// Base path.
     ///
     /// Empty for relative file paths.
     #[must_use]
-    pub const fn root(&self) -> &Cow<'_, Path> {
-        &self.root
+    pub const fn base(&self) -> &Cow<'_, Path> {
+        &self.base
     }
 
     /// Relative path part.
@@ -101,16 +101,16 @@ impl<'a> FilePath<'a> {
     /// Already normalized.
     #[must_use]
     pub fn into_relative(self) -> Cow<'a, RelativePath> {
-        let Self { root: _, relative } = self;
+        let Self { base: _, relative } = self;
         relative
     }
 
     #[must_use]
     pub(crate) fn to_parent_path(&'a self) -> Option<Self> {
-        let Self { root, relative } = self;
+        let Self { base, relative } = self;
         let relative = relative.parent()?;
         Some(Self {
-            root: root.clone(),
+            base: base.clone(),
             relative: relative.into(),
         })
     }
@@ -119,12 +119,13 @@ impl<'a> FilePath<'a> {
 impl FilePath<'_> {
     #[must_use]
     pub fn is_relative(&self) -> bool {
-        let Self { root, relative: _ } = self;
-        root.is_relative()
+        let Self { base, relative: _ } = self;
+        base.is_relative()
     }
 
     /// Imports a file system path.
-    pub fn import_path<P>(path: &P) -> anyhow::Result<FilePath<'static>>
+    #[must_use]
+    pub fn import_path<P>(path: &P) -> FilePath<'static>
     where
         P: ?Sized + AsRef<Path>,
     {
@@ -132,22 +133,29 @@ impl FilePath<'_> {
         Self::import_path_impl(path.as_ref())
     }
 
-    fn import_path_impl(path: &Path) -> anyhow::Result<FilePath<'static>> {
-        if path.is_relative() {
-            let relative = RelativePath::from_path(path)?;
-            let root = Path::new("").into();
+    #[must_use]
+    fn import_path_impl(path: &Path) -> FilePath<'static> {
+        if path.is_relative()
+            && let Ok(relative) = RelativePath::from_path(path)
+        {
+            let base = Path::new("").into();
             let relative = relative.normalize().into();
-            let file_path = FilePath { root, relative };
+            let file_path = FilePath { base, relative };
             debug_assert!(file_path.is_relative());
-            return Ok(file_path);
+            return file_path;
         }
-        debug_assert!(path.is_absolute());
-        let mut root_components = Vec::with_capacity(2);
+        let mut base_prefix = None;
+        let mut base_root_dir = None;
         let relative = path
             .components()
             .filter_map(|component| match component {
-                root_component @ (Component::Prefix(_) | Component::RootDir) => {
-                    root_components.push(root_component);
+                base_component @ Component::Prefix(_) => {
+                    debug_assert!(base_root_dir.is_none());
+                    base_prefix = Some(base_component);
+                    None
+                }
+                base_component @ Component::RootDir => {
+                    base_root_dir = Some(base_component);
                     None
                 }
                 Component::CurDir => None,
@@ -158,19 +166,21 @@ impl FilePath<'_> {
             // TODO: How to avoid duplicate allocation by collect + normalize?
             .normalize()
             .into();
-        let root = root_components.into_iter().collect::<PathBuf>().into();
-        let file_path = FilePath { root, relative };
-        debug_assert!(!file_path.is_relative());
-        Ok(file_path)
+        let base = base_prefix
+            .into_iter()
+            .chain(base_root_dir)
+            .collect::<PathBuf>()
+            .into();
+        FilePath { base, relative }
     }
 
     #[must_use]
     pub(crate) fn into_owned(self) -> FilePath<'static> {
-        let Self { root, relative } = self;
-        let root = root.into_owned();
+        let Self { base, relative } = self;
+        let base = base.into_owned();
         let relative = relative.into_owned();
         FilePath {
-            root: Cow::Owned(root),
+            base: Cow::Owned(base),
             relative: Cow::Owned(relative),
         }
     }
@@ -179,7 +189,7 @@ impl FilePath<'_> {
     where
         P: AsRef<RelativePath> + ?Sized,
     {
-        let Self { root: _, relative } = self;
+        let Self { base: _, relative } = self;
         *relative = prefix.as_ref().join_normalized(&relative).into();
     }
 
@@ -188,7 +198,7 @@ impl FilePath<'_> {
     where
         P: AsRef<RelativePath> + ?Sized,
     {
-        let Self { root: _, relative } = self;
+        let Self { base: _, relative } = self;
         let Ok(stripped) = relative.strip_prefix(prefix) else {
             // Prefix mismatch.
             return false;
@@ -204,8 +214,8 @@ impl FilePath<'_> {
     /// Reconstructs the file system path.
     #[must_use]
     pub fn to_path(&self) -> PathBuf {
-        let Self { root, relative } = self;
-        relative.to_path(root)
+        let Self { base, relative } = self;
+        relative.to_path(base)
     }
 }
 
@@ -238,14 +248,14 @@ mod tests {
         //
 
         for path_segment in ["..", "foo"] {
-            let file_path = FilePath::import_path(path_segment).unwrap();
+            let file_path = FilePath::import_path(path_segment);
             assert!(file_path.is_relative());
-            assert_eq!(file_path.root(), empty_root_path);
+            assert_eq!(file_path.base(), empty_root_path);
             assert_eq!(file_path.relative(), RelativePath::new(path_segment));
 
-            let file_path = FilePath::import_path(&root_path.join(path_segment)).unwrap();
+            let file_path = FilePath::import_path(&root_path.join(path_segment));
             assert!(!file_path.is_relative());
-            assert_eq!(file_path.root(), root_path);
+            assert_eq!(file_path.base(), root_path);
             assert_eq!(file_path.relative(), RelativePath::new(path_segment));
         }
 
@@ -253,17 +263,15 @@ mod tests {
         // Multiple path segments with a separator (relative/absolute).
         //
 
-        let file_path =
-            FilePath::import_path(&Path::new("..").join("foo").join("bar").join("..")).unwrap();
+        let file_path = FilePath::import_path(&Path::new("..").join("foo").join("bar").join(".."));
         assert!(file_path.is_relative());
-        assert_eq!(file_path.root(), empty_root_path);
+        assert_eq!(file_path.base(), empty_root_path);
         assert_eq!(file_path.relative(), RelativePath::new("../foo"));
 
         let file_path =
-            FilePath::import_path(&root_path.join("..").join("foo").join("bar").join(".."))
-                .unwrap();
+            FilePath::import_path(&root_path.join("..").join("foo").join("bar").join(".."));
         assert!(!file_path.is_relative());
-        assert_eq!(file_path.root(), root_path);
+        assert_eq!(file_path.base(), root_path);
         assert_eq!(file_path.relative(), RelativePath::new("../foo"));
     }
 }
