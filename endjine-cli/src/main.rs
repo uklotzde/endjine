@@ -12,7 +12,6 @@ use std::{
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt as _;
-#[cfg(debug_assertions)]
 use log::LevelFilter;
 use relative_path::RelativePath;
 use sqlx::{SqliteExecutor, SqlitePool};
