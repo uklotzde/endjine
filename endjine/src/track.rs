@@ -67,7 +67,26 @@ pub struct Track {
     pub last_edit_time: UnixTimestamp,
 }
 
+impl Track {
+    #[must_use]
+    pub const fn to_ref(&self) -> TrackRef {
+        let Self {
+            id,
+            origin_track_id,
+            origin_database_uuid,
+            ..
+        } = self;
+        TrackRef {
+            id: *id,
+            origin_track_id: *origin_track_id,
+            origin_database_uuid: *origin_database_uuid,
+        }
+    }
+}
+
 /// References a track within the local and its origin database.
+///
+/// Subset of fields/columns from [`Track`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct TrackRef {
@@ -77,7 +96,7 @@ pub struct TrackRef {
 }
 
 impl TrackRef {
-    pub fn origin(&self, local_db_uuid: DbUuid) -> anyhow::Result<OriginTrackRef> {
+    pub fn to_origin(&self, local_db_uuid: DbUuid) -> anyhow::Result<OriginTrackRef> {
         let Self {
             id,
             origin_track_id,

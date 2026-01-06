@@ -213,7 +213,7 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
                     let Some(track_ref) = track_ref else {
                         bail!("unknown track path \"{track_path}\"");
                     };
-                    track_ref.origin(local_db_uuid)
+                    track_ref.to_origin(local_db_uuid)
                 })
                 .with_context(|| format!("import track file path \"{track_path}\""))
         })
