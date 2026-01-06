@@ -47,7 +47,7 @@ mod playlist;
 pub use self::playlist::{
     PLAYLIST_PATH_SEGMENT_SEPARATOR, Playlist, PlaylistAllChildren, PlaylistAllChildrenId,
     PlaylistAllParent, PlaylistAllParentId, PlaylistEntity, PlaylistEntityId, PlaylistId,
-    PlaylistPath, PlaylistPathId, PlaylistTrackRef, concat_playlist_path_segments_to_string,
+    PlaylistPath, PlaylistPathId, concat_playlist_path_segments_to_string,
     is_valid_playlist_path_segment, resolve_playlist_track_refs_from_file_paths,
 };
 
@@ -60,7 +60,7 @@ pub use self::smartlist::{
 };
 
 mod track;
-pub use self::track::{Track, TrackId, TrackRef, import_track_file_path};
+pub use self::track::{OriginTrackRef, Track, TrackId, TrackRef, import_track_file_path};
 
 mod unix_timestamp;
 pub use self::unix_timestamp::UnixTimestamp;

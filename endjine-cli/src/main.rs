@@ -591,7 +591,7 @@ fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
 
 async fn import_m3u_playlist(
     pool: &SqlitePool,
-    local_database_uuid: DbUuid,
+    local_db_uuid: DbUuid,
     library_path: &LibraryPath,
     playlist_path: &str,
     mode: ImportPlaylistMode,
@@ -615,7 +615,7 @@ async fn import_m3u_playlist(
 
     let track_refs = resolve_playlist_track_refs_from_file_paths(
         pool,
-        local_database_uuid,
+        local_db_uuid,
         library_path,
         track_file_paths.into_iter(),
     )

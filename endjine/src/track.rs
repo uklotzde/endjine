@@ -58,8 +58,10 @@ pub struct Track {
     pub streaming_source: Option<String>,
     pub uri: Option<String>,
     pub is_beat_grid_locked: bool,
-    pub origin_database_uuid: Option<DbUuid>,
-    pub origin_track_id: Option<TrackId>,
+    // The columns is nullable, but a database trigger ensures that could never become NULL.
+    pub origin_database_uuid: DbUuid,
+    // The columns is nullable, but a database trigger ensures that could never become NULL.
+    pub origin_track_id: TrackId,
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
     pub last_edit_time: UnixTimestamp,
@@ -69,9 +71,33 @@ pub struct Track {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct TrackRef {
+    id: TrackId,
+    origin_track_id: TrackId,
+    origin_database_uuid: DbUuid,
+}
+
+impl TrackRef {
+    pub fn origin(&self, local_db_uuid: DbUuid) -> anyhow::Result<OriginTrackRef> {
+        let Self {
+            id,
+            origin_track_id,
+            origin_database_uuid,
+        } = self;
+        if (local_db_uuid == *origin_database_uuid) && id != origin_track_id {
+            bail!("mismatching track ids");
+        }
+        Ok(OriginTrackRef {
+            id: *origin_track_id,
+            db_uuid: *origin_database_uuid,
+        })
+    }
+}
+
+/// References a track within its origin database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OriginTrackRef {
     pub id: TrackId,
-    pub origin_database_uuid: Option<DbUuid>,
-    pub origin_track_id: Option<TrackId>,
+    pub db_uuid: DbUuid,
 }
 
 impl Track {

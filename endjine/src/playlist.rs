@@ -13,7 +13,9 @@ use sqlx::{
     FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
 };
 
-use crate::{DbUuid, FilePath, LibraryPath, Track, TrackId, TrackRef, import_track_file_path};
+use crate::{
+    DbUuid, FilePath, LibraryPath, OriginTrackRef, Track, TrackId, import_track_file_path,
+};
 
 crate::db_id!(PlaylistId);
 
@@ -128,8 +130,8 @@ impl Playlist {
     pub async fn append_tracks<'e, E>(
         mut executor: impl FnMut() -> E,
         id: PlaylistId,
-        track_refs: impl IntoIterator<Item = PlaylistTrackRef>,
-    ) -> anyhow::Result<Vec<PlaylistTrackRef>>
+        track_refs: impl IntoIterator<Item = OriginTrackRef>,
+    ) -> anyhow::Result<Vec<OriginTrackRef>>
     where
         E: SqliteExecutor<'e>,
     {
@@ -147,9 +149,9 @@ impl Playlist {
         // Append each track as a new playlist entry.
         let mut ignored_track_refs = Vec::new();
         for track_ref in track_refs {
-            let PlaylistTrackRef {
-                track_id,
-                database_uuid,
+            let OriginTrackRef {
+                id: track_id,
+                db_uuid,
             } = &track_ref;
             let query_result = sqlx::query(
                 r#"INSERT OR IGNORE INTO "PlaylistEntity"
@@ -158,7 +160,7 @@ impl Playlist {
             )
             .bind(id)
             .bind(track_id)
-            .bind(database_uuid)
+            .bind(db_uuid)
             .bind(PlaylistEntityId::INVALID_ZERO)
             .bind(next_membership_ref)
             .execute(executor())
@@ -194,10 +196,10 @@ impl Playlist {
 
 pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
     pool: &SqlitePool,
-    local_database_uuid: DbUuid,
+    local_db_uuid: DbUuid,
     library_path: &LibraryPath,
     track_paths: impl IntoIterator<Item = FilePath<'p>>,
-) -> anyhow::Result<Vec<PlaylistTrackRef>> {
+) -> anyhow::Result<Vec<OriginTrackRef>> {
     let track_refs_fut = track_paths
         .into_iter()
         .map(|track_path| {
@@ -211,7 +213,7 @@ pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
                     let Some(track_ref) = track_ref else {
                         bail!("unknown track path \"{track_path}\"");
                     };
-                    PlaylistTrackRef::new(track_ref, local_database_uuid)
+                    track_ref.origin(local_db_uuid)
                 })
                 .with_context(|| format!("import track file path \"{track_path}\""))
         })
@@ -238,15 +240,15 @@ pub struct PlaylistEntity {
 
 impl PlaylistEntity {
     #[must_use]
-    pub const fn track_ref(&self) -> PlaylistTrackRef {
+    pub const fn track_ref(&self) -> OriginTrackRef {
         let Self {
             track_id,
             database_uuid,
             ..
         } = self;
-        PlaylistTrackRef {
-            track_id: *track_id,
-            database_uuid: *database_uuid,
+        OriginTrackRef {
+            id: *track_id,
+            db_uuid: *database_uuid,
         }
     }
 
@@ -405,43 +407,6 @@ impl PlaylistEntity {
             .bind(id)
             .fetch_optional(executor)
             .await
-    }
-}
-
-/// References a track with(-in) its origin database.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
-#[sqlx(rename_all = "camelCase")]
-pub struct PlaylistTrackRef {
-    pub track_id: TrackId,
-    pub database_uuid: DbUuid,
-}
-
-impl PlaylistTrackRef {
-    pub fn new(track_ref: TrackRef, local_database_uuid: DbUuid) -> anyhow::Result<Self> {
-        match track_ref {
-            TrackRef {
-                id,
-                origin_database_uuid: Some(origin_database_uuid),
-                origin_track_id: Some(origin_track_id),
-            } => {
-                if (origin_database_uuid == local_database_uuid) && id != origin_track_id {
-                    bail!("mismatching track ids");
-                }
-                Ok(Self {
-                    track_id: origin_track_id,
-                    database_uuid: origin_database_uuid,
-                })
-            }
-            TrackRef {
-                id,
-                origin_database_uuid: None,
-                origin_track_id: None,
-            } => Ok(Self {
-                track_id: id,
-                database_uuid: local_database_uuid,
-            }),
-            _ => bail!("invalid track reference {track_ref:?}"),
-        }
     }
 }
 
