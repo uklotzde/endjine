@@ -62,20 +62,6 @@ enum ImportPlaylistMode {
 
 #[derive(Debug, Parser)]
 struct ImportPlaylistArgs {
-    /// Path in the playlist hierarchy.
-    ///
-    /// Composed from the playlist titles. Path segments are separated by semicolons (';').
-    ///
-    /// Defaults to the file name if omitted.
-    ///
-    /// Example: "Parent Playlist Title;Child Playlist Title"
-    #[arg(long)]
-    playlist_path: Option<String>,
-
-    /// Controls how tracks are added to the playlist.
-    #[arg(long)]
-    mode: Option<ImportPlaylistMode>,
-
     /// M3U file path.
     #[arg(long)]
     m3u_file: PathBuf,
@@ -85,6 +71,22 @@ struct ImportPlaylistArgs {
     /// Defaults to the parent directory of the M3U file.
     #[arg(long)]
     m3u_base_path: Option<PathBuf>,
+
+    /// Path in the playlist hierarchy.
+    ///
+    /// Defaults to the M3U file name (without extension) if omitted.
+    ///
+    /// Composed from the playlist titles in the library hierarchy. Path segments are separated by semicolons (';').
+    ///
+    /// Example: "Parent Title;Child Title"
+    #[arg(long)]
+    playlist_path: Option<String>,
+
+    /// Controls how tracks are added to the playlist.
+    ///
+    /// Defaults to "append" (non-destructive).
+    #[arg(long)]
+    mode: Option<ImportPlaylistMode>,
 }
 
 #[derive(Debug, Parser)]
