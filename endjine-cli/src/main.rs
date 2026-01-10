@@ -66,9 +66,11 @@ struct ImportPlaylistArgs {
     ///
     /// Composed from the playlist titles. Path segments are separated by semicolons (';').
     ///
+    /// Defaults to the file name if omitted.
+    ///
     /// Example: "Parent Playlist Title;Child Playlist Title"
     #[arg(long)]
-    playlist_path: String,
+    playlist_path: Option<String>,
 
     /// Controls how tracks are added to the playlist.
     #[arg(long)]
@@ -147,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
             return Ok(());
         }
     };
+    log::info!("Library directory: {library_path}");
 
     let info = Information::load(|| &pool).await?;
     log::info!("Database UUID: {uuid}", uuid = info.uuid());
@@ -182,8 +185,14 @@ async fn main() -> anyhow::Result<()> {
             m3u_base_path,
         }) => {
             let mode = mode.unwrap_or_default();
-            debug_assert!(!library_path.is_relative());
-            log::info!("Library path: {library_path}");
+            let Some(playlist_path) = playlist_path.map(Cow::Owned).or_else(|| {
+                m3u_file
+                    .file_name()
+                    .and_then(|file_name| file_name.to_str().map(Cow::Borrowed))
+            }) else {
+                bail!("Missing playlist path");
+            };
+            log::info!("Playlist path: {playlist_path}");
             match import_m3u_playlist(
                 &pool,
                 *info.uuid(),
@@ -197,7 +206,7 @@ async fn main() -> anyhow::Result<()> {
             {
                 Ok(()) => (),
                 Err(err) => {
-                    log::error!(
+                    bail!(
                         "Failed to import M3U playlist from \"{m3u_file}\": {err:#}",
                         m3u_file = m3u_file.display()
                     );
