@@ -187,7 +187,7 @@ async fn main() -> anyhow::Result<()> {
             let mode = mode.unwrap_or_default();
             let Some(playlist_path) = playlist_path.map(Cow::Owned).or_else(|| {
                 m3u_file
-                    .file_name()
+                    .file_prefix()
                     .and_then(|file_name| file_name.to_str().map(Cow::Borrowed))
             }) else {
                 bail!("Missing playlist path");
