@@ -652,8 +652,7 @@ async fn import_m3u_playlist(
                 "Replacing playlist \"{playlist_path}\" with {track_count} track(s)",
                 track_count = track_refs.len()
             );
-            PlaylistEntity::delete_list(pool, playlist_id).await?;
-            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?
+            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await?
         }
     };
     if !ignored_track_refs.is_empty() {

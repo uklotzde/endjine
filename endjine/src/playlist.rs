@@ -192,6 +192,120 @@ impl Playlist {
 
         Ok(ignored_track_refs)
     }
+
+    /// Replaces all tracks in a playlist.
+    ///
+    /// This method replaces all existing tracks in the playlist.
+    /// It reuses existing entries where possible.
+    ///
+    /// Returns all duplicate tracks that have been ignored.
+    ///
+    /// Must run within a transaction in isolation.
+    pub async fn replace_tracks<'e, E>(
+        mut executor: impl FnMut() -> E,
+        id: PlaylistId,
+        track_refs: impl IntoIterator<Item = OriginTrackRef>,
+    ) -> anyhow::Result<Vec<OriginTrackRef>>
+    where
+        E: SqliteExecutor<'e>,
+    {
+        let mut existing_entries = PlaylistEntity::load_list(executor(), id).await?.into_iter();
+        let mut track_refs = track_refs.into_iter();
+        let mut last_entry_id = None;
+        let mut ignored_track_refs = Vec::new();
+
+        // Prevent uniqueness constraint violations between replaced and
+        // remaining existing entries. This works, because the trackId
+        // is not defined as a foreign key.
+        let query_result = sqlx::query(
+            r#"UPDATE "PlaylistEntity"
+                    SET "trackId"=-"trackId"
+                    WHERE "id"=?1 AND "trackId">0"#,
+        )
+        .bind(id)
+        .execute(executor())
+        .await?;
+        log::debug!(
+            "Replacing {} entry(ies) in playlist {id}",
+            query_result.rows_affected()
+        );
+
+        while let Some(next_track_ref) = track_refs.next() {
+            let Some(next_entry) = existing_entries.next() else {
+                // All existing entries have been reused.
+                // The remaining tracks need to be added as new entries.
+                let remaining_ignored_tracks_refs = Self::append_tracks(
+                    executor,
+                    id,
+                    std::iter::once(next_track_ref).chain(track_refs),
+                )
+                .await?;
+                ignored_track_refs.extend(remaining_ignored_tracks_refs);
+                return Ok(ignored_track_refs);
+            };
+
+            // Update entry.
+            if next_track_ref != next_entry.track_ref() {
+                let OriginTrackRef {
+                    id: track_id,
+                    db_uuid,
+                } = &next_track_ref;
+                debug_assert!(*track_id > TrackId::INVALID_ZERO);
+                let query_result = sqlx::query(
+                    r#"UPDATE OR IGNORE "PlaylistEntity"
+                    SET "trackId"=?1, "databaseUuid"=?2
+                    WHERE "id"=?3"#,
+                )
+                .bind(track_id)
+                .bind(db_uuid)
+                .bind(next_entry.id)
+                .execute(executor())
+                .await?;
+
+                debug_assert!(query_result.rows_affected() <= 1);
+                if query_result.rows_affected() == 0 {
+                    // Ignore duplicate tracks.
+                    ignored_track_refs.push(next_track_ref);
+                    continue;
+                }
+            }
+
+            // Prepare next iteration.
+            last_entry_id = Some(next_entry.id);
+        }
+
+        let Some(last_entry_id) = last_entry_id else {
+            // Playlist is empty.
+            debug_assert_eq!(
+                PlaylistEntity::count_list(executor(), id).await.ok(),
+                Some(0)
+            );
+            let _query_result = PlaylistEntity::delete_list(executor(), id).await?;
+            return Ok(Vec::new());
+        };
+
+        // Terminate linked list.
+        sqlx::query(
+            r#"UPDATE "PlaylistEntity"
+                   SET "nextEntityId"=?1
+                   WHERE "id"=?2"#,
+        )
+        .bind(PlaylistEntityId::INVALID_ZERO)
+        .bind(last_entry_id)
+        .execute(executor())
+        .await?;
+
+        // Delete unused/obsolete entries.
+        let _query_result = sqlx::query(
+            r#"DELETE FROM "PlaylistEntity"
+            WHERE "trackId"<0"#,
+        )
+        .bind(id)
+        .execute(executor())
+        .await?;
+
+        Ok(ignored_track_refs)
+    }
 }
 
 pub async fn resolve_playlist_track_refs_from_file_paths<'p>(
