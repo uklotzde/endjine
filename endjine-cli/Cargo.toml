@@ -12,6 +12,7 @@ repository.workspace = true
 publish = false
 
 [[bin]]
+# The name of the executable omits the "-cli" suffix from the crate name.
 name = "endjine"
 path = "src/main.rs"
 
@@ -20,7 +21,7 @@ endjine = { workspace = true, features = ["batch"] }
 
 anyhow.workspace = true
 clap = { version = "4.5.54", features = ["derive"] }
-colored = "3.0.0"
+colored = "3.1.1"
 env_logger = "0.11.8"
 futures-util.workspace = true
 log.workspace = true
