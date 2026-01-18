@@ -5,7 +5,7 @@
 
 use std::{
     borrow::Cow,
-    env,
+    env, io,
     path::{Path, PathBuf},
 };
 
@@ -63,28 +63,32 @@ enum ImportPlaylistMode {
 #[derive(Debug, Parser)]
 struct ImportPlaylistArgs {
     /// M3U file path.
-    #[arg(long)]
-    m3u_file: PathBuf,
-
-    /// Absolute base path for resolving relative paths in the M3U file.
     ///
-    /// Defaults to the parent directory of the M3U file.
+    /// Optional. Defaults to reading from stdin instead of a file.
+    #[arg(long)]
+    m3u_file: Option<PathBuf>,
+
+    /// Absolute base path for resolving relative M3U file paths.
+    ///
+    /// Optional. Defaults to the parent directory of the M3U file.
     #[arg(long)]
     m3u_base_path: Option<PathBuf>,
 
     /// Path in the playlist hierarchy.
     ///
-    /// Defaults to the M3U file name (without extension) if omitted.
+    /// Optional. Defaults to the M3U file name without extension.
     ///
-    /// Composed from the playlist titles in the library hierarchy. Path segments are separated by semicolons (';').
+    /// The playlist path in Engine DJ is composed from the playlist titles
+    /// in the library hierarchy. Path segments are separated by semicolons (';').
+    /// A trailing semicolon is allowed.
     ///
-    /// Example: "Parent Title;Child Title"
+    /// Example: "Parent Title;Child Title" or "Parent Title;Child Title;"
     #[arg(long)]
     playlist_path: Option<String>,
 
     /// Controls how tracks are added to the playlist.
     ///
-    /// Defaults to "append" (non-destructive).
+    /// Optional. Defaults to "append" (non-destructive).
     #[arg(long)]
     mode: Option<ImportPlaylistMode>,
 }
@@ -189,29 +193,33 @@ async fn main() -> anyhow::Result<()> {
             let mode = mode.unwrap_or_default();
             let Some(playlist_path) = playlist_path.map(Cow::Owned).or_else(|| {
                 m3u_file
-                    .file_prefix()
+                    .as_deref()
+                    .and_then(Path::file_prefix)
                     .and_then(|file_name| file_name.to_str().map(Cow::Borrowed))
             }) else {
                 bail!("Missing playlist path");
             };
             log::info!("Playlist path: {playlist_path}");
-            match import_m3u_playlist(
+            let source = if let Some(m3u_file) = &m3u_file {
+                Cow::Owned(format!("file \"{}\"", m3u_file.display()))
+            } else {
+                Cow::Borrowed("stdin")
+            };
+            log::info!("Importing M3U playlist from {source}");
+            match import_playlist_from_m3u_file(
                 &pool,
                 *info.uuid(),
                 &library_path,
                 &playlist_path,
                 mode,
-                &m3u_file,
+                m3u_file.as_deref(),
                 m3u_base_path.as_deref(),
             )
             .await
             {
                 Ok(()) => (),
                 Err(err) => {
-                    bail!(
-                        "Failed to import M3U playlist from \"{m3u_file}\": {err:#}",
-                        m3u_file = m3u_file.display()
-                    );
+                    bail!("Failed to import M3U playlist from {source}: {err:#}");
                 }
             }
         }
@@ -562,33 +570,53 @@ async fn playlist_delete_empty(pool: &SqlitePool) {
     }
 }
 
-fn import_m3u_playlist_entries(
-    file_path: &Path,
-    base_path: Option<&Path>,
+fn import_track_file_paths_from_m3u_file(
+    file_path: Option<&Path>,
+    entry_base_path: Option<&Path>,
 ) -> anyhow::Result<Vec<FilePath<'static>>> {
-    let reader = m3u::Reader::open(file_path)?;
-    let mut reader = reader;
-    reader
-        .entries()
+    if let Some(file_path) = file_path {
+        let mut reader = m3u::Reader::open(file_path).context("open M3U file")?;
+        import_m3u_entries(reader.entries(), entry_base_path)
+    } else {
+        let mut reader = m3u::Reader::new(io::stdin().lock());
+        import_m3u_entries(reader.entries(), entry_base_path)
+    }
+}
+
+fn import_m3u_entries<T>(
+    entries: m3u::Entries<'_, T>,
+    entry_base_path: Option<&Path>,
+) -> anyhow::Result<Vec<FilePath<'static>>>
+where
+    T: io::BufRead,
+{
+    entries
         .map(|entry_result| {
-            entry_result.map_err(Into::into).and_then(|entry| {
-                let mut file_path = m3u_entry_file_path(&entry).context("M3U entry file path")?;
-                if file_path.is_relative() {
-                    let Some(base_path) = base_path else {
-                        bail!(
-                            "unresolved relative file path \"{file_path}\"",
-                            file_path = file_path.display()
-                        );
-                    };
-                    file_path = Cow::Owned(base_path.join(file_path));
-                }
-                Ok(FilePath::import_path(&file_path))
-            })
+            entry_result
+                .map_err(Into::into)
+                .and_then(|entry| import_m3u_entry(&entry, entry_base_path))
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
-fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
+fn import_m3u_entry(
+    entry: &m3u::Entry,
+    entry_base_path: Option<&Path>,
+) -> anyhow::Result<FilePath<'static>> {
+    let mut file_path = m3u_entry_to_file_path(entry).context("M3U entry file path")?;
+    if file_path.is_relative() {
+        let Some(entry_base_path) = entry_base_path else {
+            bail!(
+                "unresolved relative file path \"{file_path}\"",
+                file_path = file_path.display()
+            );
+        };
+        file_path = Cow::Owned(entry_base_path.join(file_path));
+    }
+    Ok(FilePath::import_path(&file_path))
+}
+
+fn m3u_entry_to_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
     match entry {
         m3u::Entry::Path(file_path) => Ok(Cow::Borrowed(file_path)),
         m3u::Entry::Url(url) => match url.to_file_path() {
@@ -600,41 +628,64 @@ fn m3u_entry_file_path(entry: &m3u::Entry) -> anyhow::Result<Cow<'_, Path>> {
     }
 }
 
-async fn import_m3u_playlist(
+async fn import_playlist_from_m3u_file(
     pool: &SqlitePool,
     local_db_uuid: DbUuid,
     library_path: &LibraryPath,
     playlist_path: &str,
     mode: ImportPlaylistMode,
-    m3u_file_path: &Path,
+    m3u_file_path: Option<&Path>,
     m3u_base_path: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let m3u_base_path = m3u_base_path.or(m3u_file_path.parent());
+    let m3u_base_path = m3u_base_path.or_else(|| m3u_file_path.and_then(Path::parent));
     if let Some(m3u_base_path) = m3u_base_path {
         log::info!(
             "M3U base path: {m3u_base_path}",
             m3u_base_path = m3u_base_path.display()
         );
     }
-    let track_file_paths = import_m3u_playlist_entries(m3u_file_path, m3u_base_path)
-        .context("import M3U playlist entries")?;
 
+    let track_file_paths = import_track_file_paths_from_m3u_file(m3u_file_path, m3u_base_path)
+        .context("import track file paths")?;
     log::info!(
-        "Resolving paths of {entry_count} entry(ies) in M3U playlist",
-        entry_count = track_file_paths.len()
+        "Imported {count} track file path(s) from M3U playlist",
+        count = track_file_paths.len()
     );
 
+    import_playlist_from_track_file_paths(
+        pool,
+        local_db_uuid,
+        library_path,
+        playlist_path,
+        mode,
+        track_file_paths,
+    )
+    .await
+}
+
+async fn import_playlist_from_track_file_paths(
+    pool: &SqlitePool,
+    local_db_uuid: DbUuid,
+    library_path: &LibraryPath,
+    playlist_path: &str,
+    mode: ImportPlaylistMode,
+    track_file_paths: impl IntoIterator<Item = FilePath<'_>>,
+) -> anyhow::Result<()> {
     let track_refs = resolve_playlist_track_refs_from_file_paths(
         pool,
         local_db_uuid,
         library_path,
-        track_file_paths.into_iter(),
+        track_file_paths,
     )
-    .await?;
-    let Some(playlist_id) = Playlist::find_id_by_path(pool, playlist_path).await? else {
+    .await
+    .context("resolve track refs from file paths")?;
+
+    let Some(playlist_id) = Playlist::find_id_by_path(pool, playlist_path)
+        .await
+        .context("find playlist by path")?
+    else {
         // TODO: Create new playlist.
-        log::warn!("Playlist \"{playlist_path}\" not found");
-        return Ok(());
+        bail!("playlist \"{playlist_path}\" not found");
     };
 
     // Modify playlist within a transaction.
@@ -645,14 +696,18 @@ async fn import_m3u_playlist(
                 "Appending {track_count} track(s) to playlist \"{playlist_path}\"",
                 track_count = track_refs.len()
             );
-            Playlist::append_tracks(|| pool, playlist_id, track_refs).await?
+            Playlist::append_tracks(|| pool, playlist_id, track_refs)
+                .await
+                .context("append tracks to playlist")?
         }
         ImportPlaylistMode::Replace => {
             log::info!(
                 "Replacing playlist \"{playlist_path}\" with {track_count} track(s)",
                 track_count = track_refs.len()
             );
-            Playlist::replace_tracks(|| pool, playlist_id, track_refs).await?
+            Playlist::replace_tracks(|| pool, playlist_id, track_refs)
+                .await
+                .context("replace tracks of playlist")?
         }
     };
     if !ignored_track_refs.is_empty() {
