@@ -9,15 +9,15 @@ resolver = "3"
 [workspace.package]
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.93"
 license = "MPL-2.0"
 repository = "https://github.com/uklotzde/endjine"
 
 [workspace.dependencies]
 endjine = { path = "endjine" }
 
-anyhow = "1.0.100"
-futures-util = "0.3.31"
+anyhow = "1.0.101"
+futures-util = "0.3.32"
 image = "0.25.9"
 itertools = "0.14.0"
 log = "0.4.29"
