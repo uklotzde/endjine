@@ -109,7 +109,7 @@ jobs:
           mv target/${{ matrix.target }}/release/endjine${{ matrix.cli_ext }} .
 
       - name: Upload CLI artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: endjine-cli-${{ matrix.cli_arch }}
           path: endjine${{ matrix.cli_ext }}
