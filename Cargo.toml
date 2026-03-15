@@ -9,22 +9,22 @@ resolver = "3"
 [workspace.package]
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.94"
 license = "MPL-2.0"
 repository = "https://github.com/uklotzde/endjine"
 
 [workspace.dependencies]
 endjine = { path = "endjine" }
 
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 futures-util = "0.3.32"
-image = "0.25.9"
+image = "0.25.10"
 itertools = "0.14.0"
 log = "0.4.29"
 relative-path = "2.0.1"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "time", "uuid"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.50.0", features = ["rt-multi-thread"] }
 
 [workspace.lints.rust]
 future_incompatible = "warn"
