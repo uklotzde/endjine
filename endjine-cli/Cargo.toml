@@ -21,7 +21,7 @@ endjine = { workspace = true, features = ["batch"] }
 
 anyhow.workspace = true
 clap = { version = "4.6.0", features = ["derive"] }
-env_logger = "0.11.9"
+env_logger = "0.11.10"
 futures-util.workspace = true
 log.workspace = true
 m3u = "1.0.0"
