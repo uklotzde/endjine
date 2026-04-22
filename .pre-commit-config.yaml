@@ -25,7 +25,7 @@ repos:
       - id: commitlint
         stages: [commit-msg]
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.0
+    rev: v0.22.1
     hooks:
       - id: markdownlint-cli2
         exclude: ^LICENSE\.md$
@@ -45,18 +45,18 @@ repos:
       - id: check-json5
   # Format code with oxfmt for supported file types.
   - repo: https://github.com/oxc-project/mirrors-oxfmt
-    rev: v0.43.0
+    rev: v0.45.0
     hooks:
       - id: oxfmt
         types_or:
           - json
           - markdown
+          - toml
           - yaml
   # TOML
   - repo: https://github.com/ComPWA/taplo-pre-commit
     rev: v0.9.3
     hooks:
-      - id: taplo-format
       - id: taplo-lint
   # Licensing: https://reuse.software
   - repo: https://github.com/fsfe/reuse-tool
