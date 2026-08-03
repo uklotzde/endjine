@@ -19,6 +19,11 @@ pub const SCHEMA_VERSION_MAJOR: u32 = 3;
 /// Only the latest schema version is supported.
 pub const SCHEMA_VERSION_MINOR: u32 = 0;
 
+/// Latest schema patch version.
+///
+/// Only the latest schema version is supported.
+pub const SCHEMA_VERSION_PATCH: u32 = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SchemaVersion {
     pub major: u32,
@@ -32,9 +37,11 @@ impl SchemaVersion {
         let Self {
             major,
             minor,
-            patch: _,
+            patch,
         } = self;
-        *major == SCHEMA_VERSION_MAJOR && *minor == SCHEMA_VERSION_MINOR
+        *major == SCHEMA_VERSION_MAJOR
+            && *minor == SCHEMA_VERSION_MINOR
+            && *patch == SCHEMA_VERSION_PATCH
     }
 }
 
@@ -174,7 +181,10 @@ impl Information {
 
 #[cfg(test)]
 mod tests {
-    use crate::{SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, information::SchemaVersion};
+    use crate::{
+        SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, SCHEMA_VERSION_PATCH,
+        information::SchemaVersion,
+    };
 
     #[test]
     fn schema_version_supported() {
@@ -182,15 +192,7 @@ mod tests {
             SchemaVersion {
                 major: SCHEMA_VERSION_MAJOR,
                 minor: SCHEMA_VERSION_MINOR,
-                patch: u32::MIN
-            }
-            .is_supported()
-        );
-        assert!(
-            SchemaVersion {
-                major: SCHEMA_VERSION_MAJOR,
-                minor: SCHEMA_VERSION_MINOR,
-                patch: u32::MAX
+                patch: SCHEMA_VERSION_PATCH,
             }
             .is_supported()
         );
@@ -198,7 +200,7 @@ mod tests {
             !SchemaVersion {
                 major: SCHEMA_VERSION_MAJOR.checked_sub(1).unwrap(),
                 minor: SCHEMA_VERSION_MINOR,
-                patch: u32::MIN
+                patch: SCHEMA_VERSION_PATCH,
             }
             .is_supported()
         );
@@ -206,7 +208,7 @@ mod tests {
             !SchemaVersion {
                 major: SCHEMA_VERSION_MAJOR.checked_add(1).unwrap(),
                 minor: SCHEMA_VERSION_MINOR,
-                patch: u32::MIN
+                patch: SCHEMA_VERSION_PATCH,
             }
             .is_supported()
         );
@@ -214,7 +216,15 @@ mod tests {
             !SchemaVersion {
                 major: SCHEMA_VERSION_MAJOR,
                 minor: SCHEMA_VERSION_MINOR.checked_add(1).unwrap(),
-                patch: u32::MIN
+                patch: SCHEMA_VERSION_PATCH,
+            }
+            .is_supported()
+        );
+        assert!(
+            !SchemaVersion {
+                major: SCHEMA_VERSION_MAJOR,
+                minor: SCHEMA_VERSION_MINOR,
+                patch: SCHEMA_VERSION_PATCH.checked_add(1).unwrap(),
             }
             .is_supported()
         );

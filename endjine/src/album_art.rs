@@ -1,20 +1,85 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::io::Cursor;
-
 use futures_util::stream::BoxStream;
-use image::{DynamicImage, ImageFormat, ImageReader, ImageResult};
-use sqlx::{FromRow, SqliteExecutor, sqlite::SqliteQueryResult};
+use sqlx::{
+    Decode, Encode, FromRow, Sqlite, SqliteExecutor,
+    encode::IsNull,
+    error::BoxDynError,
+    sqlite::{SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef},
+};
 
 crate::db_id!(AlbumArtId);
+
+const BINARY_HASH_LEN: usize = 20;
+
+const LEGACY_HEX_HASH_LEN: usize = 40;
+
+/// Album
+///
+/// The hash changed from hex string (schema 3.0.1) to bytes (schema 3.0.2).
+/// after purging all album art and re-importing from files.
+#[derive(Debug, Clone)]
+pub enum AlbumArtHash {
+    /// 160-bit binary hash value.
+    Binary([u8; BINARY_HASH_LEN]),
+    /// Hex-encoded hash value.
+    LegacyHex([u8; LEGACY_HEX_HASH_LEN]),
+}
+
+impl AlbumArtHash {
+    #[must_use]
+    const fn as_slice(&self) -> &[u8] {
+        match self {
+            Self::Binary(slice) => slice,
+            Self::LegacyHex(slice) => slice,
+        }
+    }
+}
+
+impl sqlx::Type<Sqlite> for AlbumArtHash {
+    fn type_info() -> SqliteTypeInfo {
+        <&[u8] as sqlx::Type<Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &SqliteTypeInfo) -> bool {
+        <&[u8] as sqlx::Type<Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'r> Decode<'r, Sqlite> for AlbumArtHash {
+    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let value = <&[u8] as Decode<'r, Sqlite>>::decode(value)?;
+        let decoded = match value.len() {
+            BINARY_HASH_LEN => Self::Binary(value.try_into().unwrap()),
+            LEGACY_HEX_HASH_LEN => Self::LegacyHex(value.try_into().unwrap()),
+            _ => {
+                return Err("invalid length".into());
+            }
+        };
+        Ok(decoded)
+    }
+}
+
+impl Encode<'_, Sqlite> for AlbumArtHash {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
+        <&[u8] as Encode<'_, Sqlite>>::encode_by_ref(&self.as_slice(), buf)
+    }
+}
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct AlbumArt {
     id: AlbumArtId,
-    hash: Option<String>,
+
+    hash: Option<AlbumArtHash>,
+
+    //
+    // Album art is stored as JPG images in the file system starting by
+    // Engine 5.0.0 (schema 3.0.2). Values in column albumArt become NULL
+    // after purging all album art and re-importing from files.
     #[sqlx(rename = "albumArt")]
+    #[expect(dead_code)]
     image_data: Option<Vec<u8>>,
 }
 
@@ -25,34 +90,11 @@ impl AlbumArt {
     }
 
     #[must_use]
-    pub const fn hash(&self) -> Option<&str> {
+    pub const fn hash(&self) -> Option<&[u8]> {
         if let Some(hash) = &self.hash {
-            return Some(hash.as_str());
+            return Some(hash.as_slice());
         }
         None
-    }
-
-    #[must_use]
-    pub const fn image_data(&self) -> Option<&[u8]> {
-        if let Some(image_data) = &self.image_data {
-            return Some(image_data.as_slice());
-        }
-        None
-    }
-
-    pub fn guess_image_format(&self) -> ImageResult<Option<ImageFormat>> {
-        let Some(image_data) = self.image_data() else {
-            return Ok(None);
-        };
-        guess_image_format(image_data)
-    }
-
-    pub fn decode_image(&self) -> ImageResult<(Option<ImageFormat>, Option<DynamicImage>)> {
-        let Some(image_data) = self.image_data() else {
-            return Ok((None, None));
-        };
-        let (image_format, image) = decode_image(image_data)?;
-        Ok((image_format, Some(image)))
     }
 
     /// Fetches all [`AlbumArt`] asynchronously.
@@ -78,18 +120,6 @@ impl AlbumArt {
             .await
     }
 
-    pub async fn update_image(
-        executor: impl SqliteExecutor<'_>,
-        id: AlbumArtId,
-        image_data: impl AsRef<[u8]>,
-    ) -> sqlx::Result<SqliteQueryResult> {
-        sqlx::query(r#"UPDATE "AlbumArt" SET "albumArt"=?2 WHERE "id"=?1"#)
-            .bind(id)
-            .bind(image_data.as_ref())
-            .execute(executor)
-            .await
-    }
-
     pub async fn delete_unused(executor: impl SqliteExecutor<'_>) -> sqlx::Result<u64> {
         let result =
             sqlx::query(r#"DELETE FROM "AlbumArt" WHERE "id" NOT IN (SELECT "albumArtId" FROM "Track" WHERE "albumArtId" IS NOT NULL)"#)
@@ -97,22 +127,4 @@ impl AlbumArt {
                 .await?;
         Ok(result.rows_affected())
     }
-}
-
-fn guess_image_format(image_data: &[u8]) -> ImageResult<Option<ImageFormat>> {
-    let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format()?;
-    Ok(reader.format())
-}
-
-fn decode_image(image_data: &[u8]) -> ImageResult<(Option<ImageFormat>, DynamicImage)> {
-    let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format()?;
-    let image_format = reader.format();
-    reader.decode().map(|image| (image_format, image))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum AlbumArtImageQuality {
-    Low,
-    Medium,
-    High,
 }

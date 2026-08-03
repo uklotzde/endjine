@@ -11,9 +11,6 @@ pub use self::find_track_file_issues::{
 mod purge_album_art;
 pub use self::purge_album_art::purge_album_art;
 
-mod shrink_album_art_images;
-pub use self::shrink_album_art_images::shrink_album_art_images;
-
 #[derive(Debug, Default)]
 pub struct BatchOutcome {
     /// Number of items that succeeded.
@@ -29,15 +26,4 @@ pub struct BatchOutcome {
     ///
     /// If `None` the batch operation finished regularly.
     pub aborted_error: Option<Box<dyn Error>>,
-}
-
-impl BatchOutcome {
-    #[must_use]
-    pub(crate) fn abort(self, error: Box<dyn Error>) -> Self {
-        debug_assert!(self.aborted_error.is_none());
-        Self {
-            aborted_error: Some(error),
-            ..self
-        }
-    }
 }

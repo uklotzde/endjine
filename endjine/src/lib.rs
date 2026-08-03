@@ -16,7 +16,7 @@ use std::{
 use anyhow::bail;
 use relative_path::{RelativePath, RelativePathBuf};
 
-pub use self::album_art::{AlbumArt, AlbumArtId, AlbumArtImageQuality};
+pub use self::album_art::{AlbumArt, AlbumArtId};
 
 mod changelog;
 pub use self::changelog::{ChangeLog, ChangeLogId};
@@ -34,7 +34,7 @@ pub use self::historylist::{Historylist, HistorylistEntity, HistorylistEntityId,
 
 mod information;
 pub use self::information::{
-    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR,
+    Information, InformationId, SCHEMA_VERSION_MAJOR, SCHEMA_VERSION_MINOR, SCHEMA_VERSION_PATCH,
 };
 
 mod pack;

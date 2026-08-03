@@ -19,7 +19,6 @@ all-features = true
 
 [dependencies]
 anyhow.workspace = true
-image.workspace = true
 itertools.workspace = true
 relative-path.workspace = true
 serde.workspace = true

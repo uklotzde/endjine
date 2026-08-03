@@ -65,6 +65,7 @@ pub struct Track {
     pub streaming_flags: i64,
     pub explicit_lyrics: bool,
     pub last_edit_time: UnixTimestamp,
+    pub album_art_source_hash: Option<String>, // CHAR(40)
 }
 
 impl Track {

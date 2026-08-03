@@ -16,9 +16,9 @@ use log::LevelFilter;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
-    AlbumArt, BatchOutcome, DbUuid, FilePath, Historylist, HistorylistEntity, Information,
-    LibraryPath, PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track,
-    batch, open_database, resolve_playlist_track_refs_from_file_paths,
+    AlbumArt, DbUuid, FilePath, Historylist, HistorylistEntity, Information, LibraryPath,
+    PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
+    open_database, resolve_playlist_track_refs_from_file_paths,
 };
 
 /// Default log level for debug builds.
@@ -41,8 +41,6 @@ enum Command {
     ImportPlaylist(ImportPlaylistArgs),
     /// Delete all empty playlists.
     DeleteEmptyPlaylists,
-    /// Convert album art images from PNG to JPG to save space.
-    ShrinkAlbumArt,
     /// Purge all album art for re-import.
     PurgeAlbumArt,
     /// Purge cruft from the database.
@@ -170,9 +168,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::DeleteEmptyPlaylists => {
             playlist_delete_empty(&pool).await;
-        }
-        Command::ShrinkAlbumArt => {
-            album_art_shrink_images(&pool).await;
         }
         Command::PurgeAlbumArt => {
             album_art_purge_images(&pool).await;
@@ -500,25 +495,6 @@ async fn album_art_delete_unused(pool: &SqlitePool) {
         }
         Err(err) => {
             log::warn!("AlbumArt: Failed to delete unused: {err}");
-        }
-    }
-}
-
-async fn album_art_shrink_images(pool: &SqlitePool) {
-    log::info!("AlbumArt: Shrinking images...");
-    {
-        let BatchOutcome {
-            succeeded,
-            skipped,
-            failed,
-            aborted_error,
-        } = batch::shrink_album_art_images(pool, endjine::AlbumArtImageQuality::Low).await;
-        log::info!(
-            "AlbumArt: Shrinking of images finished: succeeded = {succeeded}, skipped = {skipped}, failed = {failed}",
-            failed = failed.len()
-        );
-        if let Some(err) = aborted_error {
-            log::warn!("AlbumArt: Shrinking of images aborted with error: {err}");
         }
     }
 }
