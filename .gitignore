@@ -12,3 +12,6 @@
 
 # Temporary SQL files that are only used during development.
 *.sql
+
+# M3U example files
+*.m3u
