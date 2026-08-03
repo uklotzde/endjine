@@ -5,7 +5,7 @@ use sqlx::{
     Decode, Encode, Sqlite,
     encode::IsNull,
     error::BoxDynError,
-    sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef},
+    sqlite::{SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef},
     types::time::OffsetDateTime,
 };
 
@@ -39,11 +39,11 @@ impl<'r> Decode<'r, Sqlite> for UnixTimestamp {
     }
 }
 
-impl<'q> Encode<'q, Sqlite> for UnixTimestamp {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl Encode<'_, Sqlite> for UnixTimestamp {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         let Self {
             seconds_since_epoch_origin,
         } = self;
-        <i64 as Encode<Sqlite>>::encode_by_ref(seconds_since_epoch_origin, buf)
+        <i64 as Encode<'_, Sqlite>>::encode_by_ref(seconds_since_epoch_origin, buf)
     }
 }

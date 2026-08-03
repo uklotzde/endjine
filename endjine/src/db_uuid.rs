@@ -62,19 +62,19 @@ macro_rules! db_uuid {
             }
         }
 
-        impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for $name {
+        impl sqlx::Encode<'_, sqlx::Sqlite> for $name {
             fn encode_by_ref(
                 &self,
-                buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+                buf: &mut sqlx::sqlite::SqliteArgumentsBuffer,
             ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
                 if self.is_nil() {
                     // Special case: Encode nil as empty string.
-                    return <String as sqlx::Encode<'q, sqlx::Sqlite>>::encode_by_ref(
+                    return <String as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(
                         &String::new(),
                         buf,
                     );
                 }
-                <sqlx::types::uuid::fmt::Hyphenated as sqlx::Encode<sqlx::Sqlite>>::encode_by_ref(
+                <sqlx::types::uuid::fmt::Hyphenated as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(
                     &self.0, buf,
                 )
             }
