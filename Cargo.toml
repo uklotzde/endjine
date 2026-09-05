@@ -9,7 +9,7 @@ resolver = "3"
 [workspace.package]
 version = "0.0.6"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.98"
 license = "MPL-2.0"
 repository = "https://github.com/uklotzde/endjine"
 
@@ -17,10 +17,10 @@ repository = "https://github.com/uklotzde/endjine"
 endjine = { path = "endjine" }
 
 anyhow = "1.0.104"
-futures-util = "0.3.33"
+futures-util = "0.3.34"
 image = "0.25.10"
 itertools = "0.15.0"
-log = "0.4.33"
+log = "0.4.34"
 relative-path = "2.0.1"
 serde = { version = "1.0.229", features = ["derive"] }
 sqlx = { version = "0.9.0", features = ["sqlite", "time", "uuid"] }
