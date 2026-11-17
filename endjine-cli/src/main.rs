@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-#![allow(unreachable_code)]
-
 use std::{
     borrow::Cow,
     io,
@@ -203,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
                 Cow::Borrowed("stdin")
             };
             log::info!("Importing M3U playlist from {source}");
-            match import_playlist_from_m3u_file(
+            if let Err(err) = import_playlist_from_m3u_file(
                 &pool,
                 *info.uuid(),
                 &library_path,
@@ -214,10 +212,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
             {
-                Ok(()) => (),
-                Err(err) => {
-                    bail!("Failed to import M3U playlist from {source}: {err:#}");
-                }
+                bail!("Failed to import M3U playlist from {source}: {err:#}");
             }
         }
         Command::Housekeeping => {
@@ -354,24 +349,21 @@ async fn album_art_delete_unused(pool: &SqlitePool) {
 
 async fn album_art_purge_images(pool: &SqlitePool) {
     log::info!("AlbumArt: Purging images...");
-    {
-        // TODO: Extract function.
-        let purge_album_art_result: anyhow::Result<u64> = async move {
-            let mut tx = pool.begin().await?;
-            let purged_count = batch::purge_album_art(&mut tx).await?;
-            tx.commit().await?;
-            Ok(purged_count)
+    match purge_album_art_in_transaction(pool).await {
+        Ok(purged_count) => {
+            log::info!("AlbumArt: Purged {purged_count} image(s)");
         }
-        .await;
-        match purge_album_art_result {
-            Ok(purged_count) => {
-                log::info!("AlbumArt: Purged {purged_count} image(s)");
-            }
-            Err(err) => {
-                log::warn!("AlbumArt: Purging of images aborted with error: {err}");
-            }
+        Err(err) => {
+            log::warn!("AlbumArt: Purging of images aborted with error: {err}");
         }
     }
+}
+
+async fn purge_album_art_in_transaction(pool: &SqlitePool) -> sqlx::Result<u64> {
+    let mut tx = pool.begin().await?;
+    let purged_count = batch::purge_album_art(&mut tx).await?;
+    tx.commit().await?;
+    Ok(purged_count)
 }
 
 async fn playlist_delete_empty(pool: &SqlitePool) {
@@ -413,12 +405,8 @@ where
     T: io::BufRead,
 {
     entries
-        .map(|entry_result| {
-            entry_result
-                .map_err(Into::into)
-                .and_then(|entry| import_m3u_entry(&entry, entry_base_path))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()
+        .map(|entry| import_m3u_entry(&entry?, entry_base_path))
+        .collect()
 }
 
 fn import_m3u_entry(
