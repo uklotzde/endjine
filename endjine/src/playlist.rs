@@ -20,13 +20,12 @@ use crate::{
 
 crate::db_id!(PlaylistId);
 
-const MIN_MEMBERSHIP_REFERENCE: i64 = 1;
-
-#[must_use]
-fn next_membership_reference(membership_reference: i64) -> i64 {
-    debug_assert!(membership_reference >= MIN_MEMBERSHIP_REFERENCE);
-    membership_reference + 1
-}
+/// Membership reference of new entries.
+///
+/// The semantics of this column are unknown. It is not related to the
+/// position in the playlist, which is solely determined by the linked list.
+/// 0 is the most common value in existing databases.
+const NEW_MEMBERSHIP_REFERENCE: i64 = 0;
 
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
@@ -145,14 +144,8 @@ impl Playlist {
     ) -> anyhow::Result<Vec<OriginTrackRef>> {
         let last_entity = PlaylistEntity::try_load_last_of_list(connection, id).await?;
 
-        let (mut prev_entity_id, mut next_membership_ref) = last_entity.map_or(
-            (PlaylistEntityId::INVALID_ZERO, MIN_MEMBERSHIP_REFERENCE),
-            |PlaylistEntity {
-                 id,
-                 membership_reference,
-                 ..
-             }| (id, next_membership_reference(membership_reference)),
-        );
+        let mut prev_entity_id =
+            last_entity.map_or(PlaylistEntityId::INVALID_ZERO, |entity| entity.id);
 
         // Append each track as a new playlist entry.
         let mut ignored_track_refs = Vec::new();
@@ -170,7 +163,7 @@ impl Playlist {
             .bind(track_id)
             .bind(db_uuid)
             .bind(PlaylistEntityId::INVALID_ZERO)
-            .bind(next_membership_ref)
+            .bind(NEW_MEMBERSHIP_REFERENCE)
             .execute(&mut *connection)
             .await?;
 
@@ -195,7 +188,6 @@ impl Playlist {
 
             // Set up for next iteration.
             prev_entity_id = new_entity_id;
-            next_membership_ref = next_membership_reference(next_membership_ref);
         }
 
         Ok(ignored_track_refs)
@@ -377,13 +369,32 @@ impl PlaylistEntity {
 
     /// Fetches all entries of a [`Playlist`].
     ///
-    /// Ordered by the canonical position in the playlist.
+    /// Ordered by position in the playlist, i.e. by following the linked list
+    /// from the first entry, which is not referenced by any other entry.
+    ///
+    /// Entries that are not reachable from the first entry are omitted.
     pub fn fetch_list<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
         list_id: PlaylistId,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
         sqlx::query_as(
-            r#"SELECT * FROM "PlaylistEntity" WHERE "listId"=?1 ORDER BY "membershipReference""#,
+            r#"WITH RECURSIVE "chain"("id", "position") AS (
+                SELECT "id", 0 FROM "PlaylistEntity" AS "first"
+                WHERE "listId"=?1 AND NOT EXISTS (
+                    SELECT 1 FROM "PlaylistEntity"
+                    WHERE "listId"=?1 AND "nextEntityId"="first"."id"
+                )
+                UNION ALL
+                SELECT "PlaylistEntity"."nextEntityId", "chain"."position"+1
+                FROM "chain" JOIN "PlaylistEntity" ON "PlaylistEntity"."id"="chain"."id"
+                WHERE "PlaylistEntity"."nextEntityId"<>0
+                -- Terminate on cycles.
+                AND "chain"."position"<(SELECT COUNT(*) FROM "PlaylistEntity" WHERE "listId"=?1)
+            )
+            SELECT "PlaylistEntity".* FROM "chain"
+            JOIN "PlaylistEntity" ON "PlaylistEntity"."id"="chain"."id"
+            WHERE "PlaylistEntity"."listId"=?1
+            ORDER BY "chain"."position""#,
         )
         .bind(list_id)
         .fetch(executor)
@@ -464,8 +475,7 @@ impl PlaylistEntity {
     ) -> anyhow::Result<Option<Self>> {
         let mut last_entities = sqlx::query_as::<_, Self>(
             r#"SELECT * FROM "PlaylistEntity"
-               WHERE "listId"=?1
-               ORDER BY "membershipReference" DESC
+               WHERE "nextEntityId"=0 AND "listId"=?1
                LIMIT 2"#,
         )
         .bind(list_id)
@@ -483,21 +493,8 @@ impl PlaylistEntity {
             );
             return Ok(None);
         };
-        debug_assert!(last_entity.membership_reference >= MIN_MEMBERSHIP_REFERENCE);
-        if last_entity.next_entity_id.is_valid() {
-            bail!(
-                "last entry (id = {last_id}) in playlist has next entry (id = {next_id})",
-                last_id = last_entity.id,
-                next_id = last_entity.next_entity_id
-            );
-        }
-        if let Some(next_to_last_entity) = last_entities.next() {
-            debug_assert!(
-                next_to_last_entity.membership_reference <= last_entity.membership_reference
-            );
-            if next_to_last_entity.membership_reference == last_entity.membership_reference {
-                bail!("playlist with multiple last entries");
-            }
+        if last_entities.next().is_some() {
+            bail!("playlist with multiple last entries");
         }
         Ok(Some(last_entity))
     }
