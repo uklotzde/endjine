@@ -44,7 +44,6 @@ impl Playlist {
     /// Fetches all [`Playlist`]s.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
@@ -54,7 +53,6 @@ impl Playlist {
     /// Fetches all empty [`Playlist`]s without children.
     ///
     /// In no particular order.
-    #[must_use]
     pub fn fetch_all_empty_without_children<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
@@ -369,7 +367,6 @@ impl PlaylistEntity {
     /// Fetches all [`PlaylistEntity`]s.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
@@ -379,7 +376,6 @@ impl PlaylistEntity {
     /// Fetches all entries of a [`Playlist`].
     ///
     /// Ordered by the canonical position in the playlist.
-    #[must_use]
     pub fn fetch_list<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
         list_id: PlaylistId,

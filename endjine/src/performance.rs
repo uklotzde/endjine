@@ -25,7 +25,6 @@ impl PerformanceData {
     /// Fetches all [`PerformanceData`] asynchronously.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {

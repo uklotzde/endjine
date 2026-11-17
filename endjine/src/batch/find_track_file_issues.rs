@@ -31,7 +31,6 @@ pub struct TrackFileIssueItem {
 ///
 /// Track file paths in the database are relative to the path of the
 /// database file.
-#[must_use]
 pub fn find_track_file_issues<'a>(
     executor: impl SqliteExecutor<'a> + 'a,
     library_path: PathBuf,

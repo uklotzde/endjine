@@ -37,7 +37,6 @@ impl Historylist {
     /// Fetches all [`Historylist`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
@@ -77,7 +76,6 @@ impl HistorylistEntity {
     /// Fetches all [`HistorylistEntity`]s asynchronously.
     ///
     /// Unfiltered and in no particular order.
-    #[must_use]
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
@@ -87,7 +85,6 @@ impl HistorylistEntity {
     /// Fetches all items of a list asynchronously.
     ///
     /// In no particular order.
-    #[must_use]
     pub fn fetch_list<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
         list_id: HistorylistId,

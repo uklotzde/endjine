@@ -255,7 +255,7 @@ impl LibraryPath {
         };
         let Some(dir_name) = library_path.relative().file_name() else {
             // The (relative) library path must not be empty.
-            debug_assert!(library_path.relative().as_str().is_empty());
+            debug_assert_eq!(library_path.relative().as_str(), "");
             bail!("invalid library directory");
         };
         if !dir_name.eq_ignore_ascii_case(LIBRARY_DIRECTORY_NAME) {
