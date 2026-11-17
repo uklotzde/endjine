@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "endjine"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -363,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "endjine-cli"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "anyhow",
  "clap",
