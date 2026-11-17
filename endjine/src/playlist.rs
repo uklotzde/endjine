@@ -78,18 +78,30 @@ impl Playlist {
             })
     }
 
-    /// Deletes all empty [`Playlist`]s without children.
-    pub async fn delete_all_empty_without_children(
-        executor: impl SqliteExecutor<'_>,
-    ) -> sqlx::Result<u64> {
-        sqlx::query(
-            r#"DELETE FROM "Playlist"
-                WHERE "id" NOT IN (SELECT "listId" FROM "PlaylistEntity")
-                AND "id" NOT IN (SELECT "parentListId" FROM "Playlist")"#,
-        )
-        .execute(executor)
-        .await
-        .map(|result| result.rows_affected())
+    /// Deletes all empty [`Playlist`]s.
+    ///
+    /// Parents whose children are all empty are deleted as well.
+    ///
+    /// Returns the total number of deleted playlists.
+    ///
+    /// Should run within a transaction.
+    pub async fn delete_all_empty(connection: &mut SqliteConnection) -> sqlx::Result<u64> {
+        let mut deleted_count = 0;
+        loop {
+            // Deleting empty leaves might turn their parents into empty leaves.
+            let rows_affected = sqlx::query(
+                r#"DELETE FROM "Playlist"
+                    WHERE "id" NOT IN (SELECT "listId" FROM "PlaylistEntity")
+                    AND "id" NOT IN (SELECT "parentListId" FROM "Playlist")"#,
+            )
+            .execute(&mut *connection)
+            .await?
+            .rows_affected();
+            if rows_affected == 0 {
+                return Ok(deleted_count);
+            }
+            deleted_count += rows_affected;
+        }
     }
 
     /// Loads a single [`Playlist`] by ID.

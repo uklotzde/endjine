@@ -368,20 +368,21 @@ async fn purge_album_art_in_transaction(pool: &SqlitePool) -> sqlx::Result<u64> 
 
 async fn playlist_delete_empty(pool: &SqlitePool) {
     log::info!("Playlist: Deleting empty...");
-    loop {
-        match Playlist::delete_all_empty_without_children(pool).await {
-            Ok(playlist_count) => {
-                if playlist_count > 0 {
-                    log::info!("Playlist: Deleted {playlist_count} empty");
-                } else {
-                    break;
-                }
-            }
-            Err(err) => {
-                log::warn!("Playlist: Failed to delete empty: {err}");
-            }
+    match delete_empty_playlists_in_transaction(pool).await {
+        Ok(deleted_count) => {
+            log::info!("Playlist: Deleted {deleted_count} empty");
+        }
+        Err(err) => {
+            log::warn!("Playlist: Failed to delete empty: {err}");
         }
     }
+}
+
+async fn delete_empty_playlists_in_transaction(pool: &SqlitePool) -> sqlx::Result<u64> {
+    let mut tx = pool.begin().await?;
+    let deleted_count = Playlist::delete_all_empty(&mut tx).await?;
+    tx.commit().await?;
+    Ok(deleted_count)
 }
 
 fn import_track_file_paths_from_m3u_file(
