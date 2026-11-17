@@ -20,12 +20,12 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
-    rev: v9.26.0
+    rev: v9.27.0
     hooks:
       - id: commitlint
         stages: [commit-msg]
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.23.2
+    rev: v0.24.1
     hooks:
       - id: markdownlint-cli2
         exclude: ^LICENSE\.md$
@@ -35,7 +35,7 @@ repos:
       - id: codespell
         args: [--ignore-words=.codespellignore]
   - repo: https://github.com/sirosen/check-jsonschema
-    rev: 0.38.0
+    rev: 0.39.0
     hooks:
       - id: check-github-actions
       - id: check-github-workflows
@@ -45,7 +45,7 @@ repos:
       - id: check-json5
   # Format code with oxfmt for supported file types.
   - repo: https://github.com/oxc-project/mirrors-oxfmt
-    rev: v0.65.0
+    rev: v0.79.0
     hooks:
       - id: oxfmt
         types_or:
@@ -60,7 +60,7 @@ repos:
   #    - id: taplo-lint
   # Licensing: https://reuse.software
   - repo: https://github.com/fsfe/reuse-tool
-    rev: v6.2.0
+    rev: v6.3.0
     hooks:
       - id: reuse
   - repo: https://github.com/doublify/pre-commit-rust
