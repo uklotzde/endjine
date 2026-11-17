@@ -200,14 +200,13 @@ pub fn import_track_file_path<'p>(
             // Leave relative with matching prefix as is.
             return Ok(file_path.into_relative());
         }
-        file_path.prepend_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
-        return Ok(file_path.into_relative());
-    }
-    let Some(base_path) = library_path.relative().parent() else {
-        bail!("invalid library path");
-    };
-    if !file_path.strip_relative_prefix(base_path) {
-        bail!("mismatching base path \"{base_path}\"");
+    } else {
+        let Some(base_path) = library_path.relative().parent() else {
+            bail!("invalid library path");
+        };
+        if !file_path.strip_relative_prefix(base_path) {
+            bail!("mismatching base path \"{base_path}\"");
+        }
     }
     file_path.prepend_relative_prefix(RelativePath::new(RELATIVE_TRACK_PATH_PREFIX));
     Ok(file_path.into_relative())
