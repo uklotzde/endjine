@@ -214,11 +214,13 @@ impl Playlist {
         id: PlaylistId,
         track_refs: impl IntoIterator<Item = OriginTrackRef>,
     ) -> anyhow::Result<Vec<OriginTrackRef>> {
-        let mut existing_entries = PlaylistEntity::load_list(&mut *connection, id)
-            .await?
-            .into_iter();
+        let existing_entries = PlaylistEntity::load_list(&mut *connection, id).await?;
+        let mut reusable_entry_ids = existing_entries
+            .into_iter()
+            .map(|entry| entry.id)
+            .peekable();
         let mut track_refs = track_refs.into_iter();
-        let mut last_entry_id = None;
+        let mut last_reused_entry_id = None;
         let mut ignored_track_refs = Vec::new();
 
         // Prevent uniqueness constraint violations between replaced and
@@ -227,7 +229,7 @@ impl Playlist {
         let query_result = sqlx::query(
             r#"UPDATE "PlaylistEntity"
                     SET "trackId"=-"trackId"
-                    WHERE "id"=?1 AND "trackId">0"#,
+                    WHERE "listId"=?1 AND "trackId">0"#,
         )
         .bind(id)
         .execute(&mut *connection)
@@ -237,75 +239,66 @@ impl Playlist {
             query_result.rows_affected()
         );
 
-        while let Some(next_track_ref) = track_refs.next() {
-            let Some(next_entry) = existing_entries.next() else {
-                // All existing entries have been reused.
-                // The remaining tracks need to be added as new entries.
-                let remaining_ignored_tracks_refs = Self::append_tracks(
-                    connection,
-                    id,
-                    std::iter::once(next_track_ref).chain(track_refs),
-                )
-                .await?;
-                ignored_track_refs.extend(remaining_ignored_tracks_refs);
-                return Ok(ignored_track_refs);
+        // Reuse existing entries in order. An entry is only consumed after
+        // it has been updated successfully. This ensures that the reused
+        // entries form a contiguous prefix of the existing linked list.
+        while let Some(&entry_id) = reusable_entry_ids.peek() {
+            let Some(track_ref) = track_refs.next() else {
+                break;
             };
-
-            // Update entry.
-            if next_track_ref != next_entry.track_ref() {
-                let OriginTrackRef {
-                    id: track_id,
-                    db_uuid,
-                } = &next_track_ref;
-                debug_assert!(*track_id > TrackId::INVALID_ZERO);
-                let query_result = sqlx::query(
-                    r#"UPDATE OR IGNORE "PlaylistEntity"
+            let OriginTrackRef {
+                id: track_id,
+                db_uuid,
+            } = &track_ref;
+            debug_assert!(*track_id > TrackId::INVALID_ZERO);
+            let query_result = sqlx::query(
+                r#"UPDATE OR IGNORE "PlaylistEntity"
                     SET "trackId"=?1, "databaseUuid"=?2
                     WHERE "id"=?3"#,
-                )
-                .bind(track_id)
-                .bind(db_uuid)
-                .bind(next_entry.id)
-                .execute(&mut *connection)
-                .await?;
+            )
+            .bind(track_id)
+            .bind(db_uuid)
+            .bind(entry_id)
+            .execute(&mut *connection)
+            .await?;
 
-                debug_assert!(query_result.rows_affected() <= 1);
-                if query_result.rows_affected() == 0 {
-                    // Ignore duplicate tracks.
-                    ignored_track_refs.push(next_track_ref);
-                    continue;
-                }
+            debug_assert!(query_result.rows_affected() <= 1);
+            if query_result.rows_affected() == 0 {
+                // Ignore duplicate tracks.
+                ignored_track_refs.push(track_ref);
+                continue;
             }
 
-            // Prepare next iteration.
-            last_entry_id = Some(next_entry.id);
+            reusable_entry_ids.next();
+            last_reused_entry_id = Some(entry_id);
         }
 
-        let Some(last_entry_id) = last_entry_id else {
-            // Playlist is empty.
-            debug_assert_eq!(
-                PlaylistEntity::count_list(&mut *connection, id).await.ok(),
-                Some(0)
-            );
-            let _query_result = PlaylistEntity::delete_list(&mut *connection, id).await?;
-            return Ok(Vec::new());
-        };
+        if reusable_entry_ids.peek().is_none() {
+            // All existing entries have been reused.
+            // The remaining tracks need to be added as new entries.
+            let remaining_ignored_tracks_refs =
+                Self::append_tracks(connection, id, track_refs).await?;
+            ignored_track_refs.extend(remaining_ignored_tracks_refs);
+            return Ok(ignored_track_refs);
+        }
 
-        // Terminate linked list.
-        sqlx::query(
-            r#"UPDATE "PlaylistEntity"
+        if let Some(last_reused_entry_id) = last_reused_entry_id {
+            // Terminate linked list.
+            sqlx::query(
+                r#"UPDATE "PlaylistEntity"
                    SET "nextEntityId"=?1
                    WHERE "id"=?2"#,
-        )
-        .bind(PlaylistEntityId::INVALID_ZERO)
-        .bind(last_entry_id)
-        .execute(&mut *connection)
-        .await?;
+            )
+            .bind(PlaylistEntityId::INVALID_ZERO)
+            .bind(last_reused_entry_id)
+            .execute(&mut *connection)
+            .await?;
+        }
 
-        // Delete unused/obsolete entries.
+        // Delete the remaining unused entries.
         let _query_result = sqlx::query(
             r#"DELETE FROM "PlaylistEntity"
-            WHERE "trackId"<0"#,
+            WHERE "listId"=?1 AND "trackId"<0"#,
         )
         .bind(id)
         .execute(&mut *connection)
