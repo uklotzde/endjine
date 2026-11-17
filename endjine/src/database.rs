@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use sqlx::SqlitePool;
+use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::{DbUuid, Information};
 
@@ -56,4 +56,17 @@ pub async fn optimize_database(pool: &SqlitePool) -> sqlx::Result<()> {
     sqlx::query(r"VACUUM").execute(pool).await?;
     sqlx::query(r"ANALYZE").execute(pool).await?;
     Ok(())
+}
+
+/// Checks if a table exists in the database.
+pub(crate) async fn table_exists(
+    executor: impl SqliteExecutor<'_>,
+    table_name: &str,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        r#"SELECT EXISTS(SELECT 1 FROM "sqlite_master" WHERE "type"='table' AND "name"=?1)"#,
+    )
+    .bind(table_name)
+    .fetch_one(executor)
+    .await
 }
