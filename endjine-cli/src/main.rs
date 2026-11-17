@@ -5,8 +5,8 @@
 
 use std::{
     borrow::Cow,
-    env, io,
-    path::{Path, PathBuf},
+    io,
+    path::{self, Path, PathBuf},
 };
 
 use anyhow::{Context as _, bail};
@@ -16,9 +16,9 @@ use log::LevelFilter;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use endjine::{
-    AlbumArt, DbUuid, FilePath, Historylist, HistorylistEntity, Information, LibraryPath,
-    PerformanceData, Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch,
-    open_database, resolve_playlist_track_refs_from_file_paths,
+    AlbumArt, DbUuid, FilePath, Historylist, HistorylistEntity, LibraryPath, PerformanceData,
+    Playlist, PlaylistEntity, PreparelistEntity, Smartlist, Track, batch, open_database,
+    resolve_playlist_track_refs_from_file_paths,
 };
 
 /// Default log level for debug builds.
@@ -111,15 +111,9 @@ async fn main() -> anyhow::Result<()> {
 
     let Args { db_file, command } = Args::parse();
 
-    let mut db_file_path = db_file.map_or(Cow::Borrowed(Path::new(DEFAULT_DB_FILE)), Cow::Owned);
-    if db_file_path.is_relative() {
-        let current_dir = env::current_dir()?;
-        debug_assert!(current_dir.is_absolute());
-        db_file_path = Cow::Owned(current_dir.join(db_file_path));
-    }
-    debug_assert!(db_file_path.is_absolute());
+    let db_file_path = path::absolute(db_file.as_deref().unwrap_or(Path::new(DEFAULT_DB_FILE)))?;
 
-    let (pool, _info) = match open_database(&db_file_path, None).await {
+    let (pool, info) = match open_database(&db_file_path, None).await {
         Ok(pool) => {
             log::info!(
                 "Opened database file \"{db_file_path}\"",
@@ -148,7 +142,6 @@ async fn main() -> anyhow::Result<()> {
     };
     log::info!("Library directory: {library_path}");
 
-    let info = Information::load(|| &pool).await?;
     log::info!("Database UUID: {uuid}", uuid = info.uuid());
 
     match command {
