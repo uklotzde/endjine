@@ -131,11 +131,9 @@ impl Track {
     /// Determines the file path given the library path.
     #[must_use]
     pub fn to_file_path(&self, library_path: &LibraryPath) -> Option<FilePath<'static>> {
-        self.path.as_ref().map(|path| {
-            let mut file_path = library_path.file_path().clone();
-            file_path.append_relative_suffix(path);
-            file_path
-        })
+        self.path
+            .as_deref()
+            .map(|path| library_path.resolve_track_path(path))
     }
 
     /// Fetches all [`Track`]s asynchronously.

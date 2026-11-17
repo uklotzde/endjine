@@ -269,6 +269,16 @@ impl LibraryPath {
         let Self(inner) = self;
         inner
     }
+
+    /// Resolves a track path from the database.
+    ///
+    /// Track paths in the database are relative to the library path.
+    #[must_use]
+    pub(crate) fn resolve_track_path(&self, track_path: &str) -> FilePath<'static> {
+        let mut file_path = self.file_path().clone();
+        file_path.append_relative_suffix(track_path);
+        file_path
+    }
 }
 
 impl From<LibraryPath> for FilePath<'static> {

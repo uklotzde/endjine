@@ -171,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
             scan_rows("PerformanceData", PerformanceData::fetch_all(&pool)).await;
         }
         Command::FindMissingTracks => {
-            find_track_file_issues(&pool, library_path.to_path()).await;
+            find_track_file_issues(&pool, &library_path).await;
         }
         Command::DeleteEmptyPlaylists => {
             playlist_delete_empty(&pool).await;
@@ -267,7 +267,7 @@ async fn scan_rows_if_available<T>(
     true
 }
 
-async fn find_track_file_issues(pool: &SqlitePool, library_path: PathBuf) {
+async fn find_track_file_issues(pool: &SqlitePool, library_path: &LibraryPath) {
     log::info!("Track: Scanning for file issues...");
     batch::find_track_file_issues(pool, library_path)
         .for_each(|next_result| {

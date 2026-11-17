@@ -7,7 +7,7 @@ use futures_util::{StreamExt as _, stream::BoxStream};
 use sqlx::SqliteExecutor;
 use tokio::task::block_in_place;
 
-use crate::TrackId;
+use crate::{LibraryPath, TrackId};
 
 #[derive(Debug)]
 pub enum TrackFileIssue {
@@ -29,11 +29,10 @@ pub struct TrackFileIssueItem {
 
 /// Finds track file issues.
 ///
-/// Track file paths in the database are relative to the path of the
-/// database file.
+/// Track file paths in the database are relative to the library path.
 pub fn find_track_file_issues<'a>(
     executor: impl SqliteExecutor<'a> + 'a,
-    library_path: PathBuf,
+    library_path: &'a LibraryPath,
 ) -> BoxStream<'a, sqlx::Result<TrackFileIssueItem>> {
     sqlx::query_as::<_, (TrackId, String)>(
         r#"SELECT "id","path" FROM "Track" WHERE "path" IS NOT NULL"#,
@@ -48,7 +47,7 @@ pub fn find_track_file_issues<'a>(
             }
         };
         log::debug!("Checking path \"{db_path}\" of track {db_id}");
-        let mut file_path = library_path.join(&db_path);
+        let mut file_path = library_path.resolve_track_path(&db_path).to_path();
         let file_issue = block_in_place(||
                 // Blocking file I/O operations.
                 match check_file_exists(&mut file_path) {
