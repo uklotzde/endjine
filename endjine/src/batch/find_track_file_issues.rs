@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: The endjine authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::{future, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    future, io,
+    path::{Path, PathBuf},
+};
 
 use futures_util::{StreamExt as _, stream::BoxStream};
 use sqlx::SqliteExecutor;
@@ -38,39 +42,58 @@ pub fn find_track_file_issues<'a>(
         r#"SELECT "id","path" FROM "Track" WHERE "path" IS NOT NULL"#,
     )
     .fetch(executor)
-    .filter_map(move |next_result| {
-        let (db_id, db_path) = match next_result {
-            Ok(ok) => ok,
-            Err(err) => {
-                // Pass all errors through.
-                return future::ready(Some(Err(err)));
-            }
-        };
-        log::debug!("Checking path \"{db_path}\" of track {db_id}");
-        let mut file_path = library_path.resolve_track_path(&db_path).to_path();
-        let file_issue = block_in_place(||
+    .filter_map({
+        // Many tracks share the same parent directory.
+        let mut canonical_parent_paths = HashMap::new();
+        move |next_result| {
+            let (db_id, db_path) = match next_result {
+                Ok(ok) => ok,
+                Err(err) => {
+                    // Pass all errors through.
+                    return future::ready(Some(Err(err)));
+                }
+            };
+            log::debug!("Checking path \"{db_path}\" of track {db_id}");
+            let mut file_path = library_path.resolve_track_path(&db_path).to_path();
+            let file_issue = block_in_place(||
                 // Blocking file I/O operations.
-                match check_file_exists(&mut file_path) {
+                match check_file_exists(&mut canonical_parent_paths, &mut file_path) {
                     Ok(true) => None,
                     Ok(false) => Some(TrackFileIssue::FileMissing),
                     Err(err) => Some(TrackFileIssue::FileError(err)),
                 });
-        future::ready(file_issue.map(|file_issue| {
-            Ok(TrackFileIssueItem {
-                db_id,
-                db_path,
-                file_path,
-                file_issue,
-            })
-        }))
+            future::ready(file_issue.map(|file_issue| {
+                Ok(TrackFileIssueItem {
+                    db_id,
+                    db_path,
+                    file_path,
+                    file_issue,
+                })
+            }))
+        }
     })
     .boxed()
 }
 
-fn check_file_exists(file_path: &mut PathBuf) -> io::Result<bool> {
+fn check_file_exists(
+    canonical_parent_paths: &mut HashMap<PathBuf, PathBuf>,
+    file_path: &mut PathBuf,
+) -> io::Result<bool> {
     if let (Some(parent_path), Some(file_name)) = (file_path.parent(), file_path.file_name()) {
-        let parent_path = parent_path.canonicalize()?;
-        *file_path = parent_path.join(file_name);
+        let canonical_parent_path = canonicalize_cached(canonical_parent_paths, parent_path)?;
+        *file_path = canonical_parent_path.join(file_name);
     }
     file_path.try_exists()
+}
+
+/// Only successful results are cached.
+fn canonicalize_cached<'a>(
+    canonical_paths: &'a mut HashMap<PathBuf, PathBuf>,
+    path: &Path,
+) -> io::Result<&'a Path> {
+    if !canonical_paths.contains_key(path) {
+        let canonical_path = path.canonicalize()?;
+        canonical_paths.insert(path.to_path_buf(), canonical_path);
+    }
+    Ok(&canonical_paths[path])
 }
