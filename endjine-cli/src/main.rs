@@ -499,14 +499,14 @@ async fn import_playlist_from_track_file_paths(
     };
 
     // Modify playlist within a transaction.
-    let tx = pool.begin().await?;
+    let mut tx = pool.begin().await?;
     let ignored_track_refs = match mode {
         ImportPlaylistMode::Append => {
             log::info!(
                 "Appending {track_count} track(s) to playlist \"{playlist_path}\"",
                 track_count = track_refs.len()
             );
-            Playlist::append_tracks(|| pool, playlist_id, track_refs)
+            Playlist::append_tracks(&mut tx, playlist_id, track_refs)
                 .await
                 .context("append tracks to playlist")?
         }
@@ -515,7 +515,7 @@ async fn import_playlist_from_track_file_paths(
                 "Replacing playlist \"{playlist_path}\" with {track_count} track(s)",
                 track_count = track_refs.len()
             );
-            Playlist::replace_tracks(|| pool, playlist_id, track_refs)
+            Playlist::replace_tracks(&mut tx, playlist_id, track_refs)
                 .await
                 .context("replace tracks of playlist")?
         }

@@ -23,7 +23,7 @@ pub async fn open_database(
         };
         info
     } else {
-        Information::load(|| &pool)
+        Information::load(&mut *pool.acquire().await?)
             .await
             .context("load database information record")?
     };

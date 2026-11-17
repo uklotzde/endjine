@@ -5,12 +5,13 @@ use std::borrow::{Borrow, Cow};
 
 use anyhow::{Context as _, bail};
 use futures_util::{
-    StreamExt as _, TryStreamExt as _,
+    TryStreamExt as _,
     stream::{BoxStream, FuturesOrdered},
 };
 use itertools::Itertools;
 use sqlx::{
-    FromRow, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult, types::time::PrimitiveDateTime,
+    FromRow, SqliteConnection, SqliteExecutor, SqlitePool, sqlite::SqliteQueryResult,
+    types::time::PrimitiveDateTime,
 };
 
 use crate::{
@@ -125,15 +126,12 @@ impl Playlist {
     /// Returns all duplicate tracks that have been ignored.
     ///
     /// Must run within a transaction in isolation.
-    pub async fn append_tracks<'e, E>(
-        mut executor: impl FnMut() -> E,
+    pub async fn append_tracks(
+        connection: &mut SqliteConnection,
         id: PlaylistId,
         track_refs: impl IntoIterator<Item = OriginTrackRef>,
-    ) -> anyhow::Result<Vec<OriginTrackRef>>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let last_entity = PlaylistEntity::try_load_last_of_list(&mut executor, id).await?;
+    ) -> anyhow::Result<Vec<OriginTrackRef>> {
+        let last_entity = PlaylistEntity::try_load_last_of_list(connection, id).await?;
 
         let (mut prev_entity_id, mut next_membership_ref) = last_entity.map_or(
             (PlaylistEntityId::INVALID_ZERO, MIN_MEMBERSHIP_REFERENCE),
@@ -161,7 +159,7 @@ impl Playlist {
             .bind(db_uuid)
             .bind(PlaylistEntityId::INVALID_ZERO)
             .bind(next_membership_ref)
-            .execute(executor())
+            .execute(&mut *connection)
             .await?;
 
             debug_assert!(query_result.rows_affected() <= 1);
@@ -179,7 +177,7 @@ impl Playlist {
                 sqlx::query(r#"UPDATE "PlaylistEntity" SET "nextEntityId"=?1 WHERE "id"=?2"#)
                     .bind(new_entity_id)
                     .bind(prev_entity_id)
-                    .execute(executor())
+                    .execute(&mut *connection)
                     .await?;
             }
 
@@ -199,15 +197,14 @@ impl Playlist {
     /// Returns all duplicate tracks that have been ignored.
     ///
     /// Must run within a transaction in isolation.
-    pub async fn replace_tracks<'e, E>(
-        mut executor: impl FnMut() -> E,
+    pub async fn replace_tracks(
+        connection: &mut SqliteConnection,
         id: PlaylistId,
         track_refs: impl IntoIterator<Item = OriginTrackRef>,
-    ) -> anyhow::Result<Vec<OriginTrackRef>>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let mut existing_entries = PlaylistEntity::load_list(executor(), id).await?.into_iter();
+    ) -> anyhow::Result<Vec<OriginTrackRef>> {
+        let mut existing_entries = PlaylistEntity::load_list(&mut *connection, id)
+            .await?
+            .into_iter();
         let mut track_refs = track_refs.into_iter();
         let mut last_entry_id = None;
         let mut ignored_track_refs = Vec::new();
@@ -221,7 +218,7 @@ impl Playlist {
                     WHERE "id"=?1 AND "trackId">0"#,
         )
         .bind(id)
-        .execute(executor())
+        .execute(&mut *connection)
         .await?;
         log::debug!(
             "Replacing {} entry(ies) in playlist {id}",
@@ -233,7 +230,7 @@ impl Playlist {
                 // All existing entries have been reused.
                 // The remaining tracks need to be added as new entries.
                 let remaining_ignored_tracks_refs = Self::append_tracks(
-                    executor,
+                    connection,
                     id,
                     std::iter::once(next_track_ref).chain(track_refs),
                 )
@@ -257,7 +254,7 @@ impl Playlist {
                 .bind(track_id)
                 .bind(db_uuid)
                 .bind(next_entry.id)
-                .execute(executor())
+                .execute(&mut *connection)
                 .await?;
 
                 debug_assert!(query_result.rows_affected() <= 1);
@@ -275,10 +272,10 @@ impl Playlist {
         let Some(last_entry_id) = last_entry_id else {
             // Playlist is empty.
             debug_assert_eq!(
-                PlaylistEntity::count_list(executor(), id).await.ok(),
+                PlaylistEntity::count_list(&mut *connection, id).await.ok(),
                 Some(0)
             );
-            let _query_result = PlaylistEntity::delete_list(executor(), id).await?;
+            let _query_result = PlaylistEntity::delete_list(&mut *connection, id).await?;
             return Ok(Vec::new());
         };
 
@@ -290,7 +287,7 @@ impl Playlist {
         )
         .bind(PlaylistEntityId::INVALID_ZERO)
         .bind(last_entry_id)
-        .execute(executor())
+        .execute(&mut *connection)
         .await?;
 
         // Delete unused/obsolete entries.
@@ -299,7 +296,7 @@ impl Playlist {
             WHERE "trackId"<0"#,
         )
         .bind(id)
-        .execute(executor())
+        .execute(&mut *connection)
         .await?;
 
         Ok(ignored_track_refs)
@@ -429,29 +426,29 @@ impl PlaylistEntity {
     /// Reads the (unambiguous) database UUID for this playlist's entries.
     ///
     /// Returns `Ok(None)` if the requested [`Playlist`] has no entries.
-    pub async fn try_load_db_uuid_of_list<'e, E>(
-        mut executor: impl FnMut() -> E,
+    pub async fn try_load_db_uuid_of_list(
+        connection: &mut SqliteConnection,
         list_id: PlaylistId,
-    ) -> anyhow::Result<Option<DbUuid>>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let mut uuid_results = sqlx::query_scalar(
+    ) -> anyhow::Result<Option<DbUuid>> {
+        let mut uuids = sqlx::query_scalar(
             r#"SELECT DISTINCT "databaseUuid" FROM "PlaylistEntity" WHERE "listId"=?1 LIMIT 2"#,
         )
         .bind(list_id)
-        .fetch(executor());
+        .fetch_all(&mut *connection)
+        .await?
+        .into_iter();
 
-        let Some(uuid_result) = uuid_results.next().await else {
+        let Some(uuid) = uuids.next() else {
             // Playlist is empty.
             debug_assert_eq!(
-                PlaylistEntity::count_list(executor(), list_id).await.ok(),
+                PlaylistEntity::count_list(&mut *connection, list_id)
+                    .await
+                    .ok(),
                 Some(0)
             );
             return Ok(None);
         };
-        let uuid = uuid_result?;
-        if uuid_results.next().await.is_some() {
+        if uuids.next().is_some() {
             bail!("playlist entries reference multiple database UUIDs");
         }
         Ok(Some(uuid))
@@ -461,31 +458,31 @@ impl PlaylistEntity {
     ///
     /// Returns `Ok(None)` if the list is empty. Fails if the last item
     /// is ambiguous.
-    pub async fn try_load_last_of_list<'e, E>(
-        mut executor: impl FnMut() -> E,
+    pub async fn try_load_last_of_list(
+        connection: &mut SqliteConnection,
         list_id: PlaylistId,
-    ) -> anyhow::Result<Option<Self>>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let mut last_entity_results = sqlx::query_as(
+    ) -> anyhow::Result<Option<Self>> {
+        let mut last_entities = sqlx::query_as::<_, Self>(
             r#"SELECT * FROM "PlaylistEntity"
                WHERE "listId"=?1
                ORDER BY "membershipReference" DESC
                LIMIT 2"#,
         )
         .bind(list_id)
-        .fetch(executor());
+        .fetch_all(&mut *connection)
+        .await?
+        .into_iter();
 
-        let Some(last_entity_result) = last_entity_results.next().await else {
+        let Some(last_entity) = last_entities.next() else {
             // Playlist is empty.
             debug_assert_eq!(
-                PlaylistEntity::count_list(executor(), list_id).await.ok(),
+                PlaylistEntity::count_list(&mut *connection, list_id)
+                    .await
+                    .ok(),
                 Some(0)
             );
             return Ok(None);
         };
-        let last_entity: PlaylistEntity = last_entity_result?;
         debug_assert!(last_entity.membership_reference >= MIN_MEMBERSHIP_REFERENCE);
         if last_entity.next_entity_id.is_valid() {
             bail!(
@@ -494,8 +491,7 @@ impl PlaylistEntity {
                 next_id = last_entity.next_entity_id
             );
         }
-        if let Some(next_to_last_entity_result) = last_entity_results.next().await {
-            let next_to_last_entity = next_to_last_entity_result?;
+        if let Some(next_to_last_entity) = last_entities.next() {
             debug_assert!(
                 next_to_last_entity.membership_reference <= last_entity.membership_reference
             );

@@ -4,8 +4,7 @@
 use std::fmt;
 
 use anyhow::bail;
-use futures_util::StreamExt as _;
-use sqlx::{FromRow, SqliteExecutor};
+use sqlx::{FromRow, SqliteConnection, SqliteExecutor};
 
 use crate::DbUuid;
 
@@ -125,19 +124,17 @@ impl Information {
     /// Loads the singular entry.
     ///
     /// Fails if the table contains none or more than one entry.
-    pub async fn load<'e, E>(mut executor: impl FnMut() -> E) -> anyhow::Result<Self>
-    where
-        E: SqliteExecutor<'e>,
-    {
-        let mut row_results =
-            sqlx::query_as(r#"SELECT * FROM "Information" LIMIT 2"#).fetch(executor());
-        let Some(row_result) = row_results.next().await else {
+    pub async fn load(connection: &mut SqliteConnection) -> anyhow::Result<Self> {
+        let mut rows = sqlx::query_as(r#"SELECT * FROM "Information" LIMIT 2"#)
+            .fetch_all(&mut *connection)
+            .await?
+            .into_iter();
+        let Some(row) = rows.next() else {
             // Table is empty.
-            debug_assert_eq!(Self::count_all(executor()).await.ok(), Some(0));
+            debug_assert_eq!(Self::count_all(&mut *connection).await.ok(), Some(0));
             return Err(sqlx::Error::RowNotFound.into());
         };
-        let row = row_result?;
-        if row_results.next().await.is_some() {
+        if rows.next().is_some() {
             bail!("ambiguous");
         }
         Ok(row)
