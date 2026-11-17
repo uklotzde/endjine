@@ -67,8 +67,6 @@ pub use self::unix_timestamp::UnixTimestamp;
 
 #[cfg(feature = "batch")]
 pub mod batch;
-#[cfg(feature = "batch")]
-pub use self::batch::BatchOutcome;
 
 /// Portable file path.
 ///
