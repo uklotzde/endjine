@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context as _, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use futures_util::StreamExt as _;
+use futures_util::{StreamExt as _, stream::BoxStream};
 use log::LevelFilter;
 use sqlx::{SqliteExecutor, SqlitePool};
 
@@ -153,15 +153,31 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         Command::Analyze => {
-            track_scan(&pool).await;
-            playlist_scan(&pool).await;
-            playlist_entity_scan(&pool).await;
-            smartlist_scan(&pool).await;
-            preparelist_entity_scan(&pool).await;
-            if historylist_scan(&pool).await {
-                historylist_entity_scan(&pool).await;
+            scan_rows("Track", Track::fetch_all(&pool)).await;
+            scan_rows("Playlist", Playlist::fetch_all(&pool)).await;
+            scan_rows("PlaylistEntity", PlaylistEntity::fetch_all(&pool)).await;
+            scan_rows_if_available(
+                "Smartlist",
+                Smartlist::is_available(&pool).await,
+                Smartlist::fetch_all(&pool),
+            )
+            .await;
+            scan_rows_if_available(
+                "PreparelistEntity",
+                PreparelistEntity::is_available(&pool).await,
+                PreparelistEntity::fetch_all(&pool),
+            )
+            .await;
+            if scan_rows_if_available(
+                "Historylist",
+                Historylist::is_available(&pool).await,
+                Historylist::fetch_all(&pool),
+            )
+            .await
+            {
+                scan_rows("HistorylistEntity", HistorylistEntity::fetch_all(&pool)).await;
             }
-            performance_data_scan(&pool).await;
+            scan_rows("PerformanceData", PerformanceData::fetch_all(&pool)).await;
         }
         Command::FindMissingTracks => {
             find_track_file_issues(&pool, library_path.to_path()).await;
@@ -224,14 +240,15 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn track_scan(pool: &SqlitePool) {
-    log::info!("Track: Scanning...");
-    let (ok_count, err_count) = Track::fetch_all(pool)
+/// Reads all rows to verify the schema definition.
+async fn scan_rows<T>(label: &str, rows: BoxStream<'_, sqlx::Result<T>>) {
+    log::info!("{label}: Scanning...");
+    let (ok_count, err_count) = rows
         .fold((0, 0), |(ok_count, err_count), result| {
             let counts = match result {
                 Ok(_) => (ok_count + 1, err_count),
                 Err(err) => {
-                    log::warn!("Track: Failed to read row: {err:#}");
+                    log::warn!("{label}: Failed to read row: {err:#}");
                     (ok_count, err_count + 1)
                 }
             };
@@ -240,183 +257,26 @@ async fn track_scan(pool: &SqlitePool) {
         .await;
     let count = ok_count + err_count;
     if err_count > 0 {
-        log::warn!("Track: Scanned {count} row(s): {err_count} unreadable");
+        log::warn!("{label}: Scanned {count} row(s): {err_count} unreadable");
     } else {
-        log::info!("Track: Scanned {count} row(s)");
+        log::info!("{label}: Scanned {count} row(s)");
     }
 }
 
-async fn playlist_scan(pool: &SqlitePool) {
-    log::info!("Playlist: Scanning...");
-    let (ok_count, err_count) = Playlist::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("Playlist: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("Playlist: Scanned {count} row(s): {err_count} unreadable");
-    } else {
-        log::info!("Playlist: Scanned {count} row(s)");
-    }
-}
-
-async fn playlist_entity_scan(pool: &SqlitePool) {
-    log::info!("PlaylistEntity: Scanning...");
-    let (ok_count, err_count) = PlaylistEntity::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("PlaylistEntity: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("PlaylistEntity: Scanned {count} row(s): {err_count} unreadable");
-    } else {
-        log::info!("PlaylistEntity: Scanned {count} row(s)");
-    }
-}
-
-async fn smartlist_scan(pool: &SqlitePool) -> bool {
-    if !matches!(Smartlist::is_available(pool).await, Ok(true)) {
-        log::info!("Smartlist: Not available in database");
+/// Scans an optional table only if it exists in the database.
+///
+/// Returns `true` if the table is available.
+async fn scan_rows_if_available<T>(
+    label: &str,
+    is_available: sqlx::Result<bool>,
+    rows: BoxStream<'_, sqlx::Result<T>>,
+) -> bool {
+    if !matches!(is_available, Ok(true)) {
+        log::info!("{label}: Not available in database");
         return false;
     }
-    log::info!("Smartlist: Scanning...");
-    let (ok_count, err_count) = Smartlist::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("Smartlist: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("Smartlist: Scanned {count} row(s): {err_count} unreadable");
-    } else {
-        log::info!("Smartlist: Scanned {count} row(s)");
-    }
+    scan_rows(label, rows).await;
     true
-}
-
-async fn preparelist_entity_scan(pool: &SqlitePool) -> bool {
-    if !matches!(PreparelistEntity::is_available(pool).await, Ok(true)) {
-        log::info!("PreparelistEntity: Not available in database");
-        return false;
-    }
-    log::info!("PreparelistEntity: Scanning...");
-    // Try to load all PreparelistEntity(s) from the database to verify the schema definition.
-    let (ok_count, err_count) = PreparelistEntity::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("PreparelistEntity: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("PreparelistEntity: Scanned {count} row(s): {err_count} unreadable");
-    } else {
-        log::info!("PreparelistEntity: Scanned {count} row(s)");
-    }
-    true
-}
-
-async fn historylist_scan(pool: &SqlitePool) -> bool {
-    if !matches!(Historylist::is_available(pool).await, Ok(true)) {
-        log::info!("Historylist: Not available in database");
-        return false;
-    }
-    log::info!("Historylist: Scanning...");
-    // Try to load all Historylist(s) from the database to verify the schema definition.
-    let (ok_count, err_count) = Historylist::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("Historylist: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("Historylist: Scanned {count} row(s): {err_count} unreadable");
-    } else {
-        log::info!("Historylist: Scanned {count} row(s)");
-    }
-    true
-}
-
-async fn historylist_entity_scan(pool: &SqlitePool) {
-    log::info!("HistorylistEntity: Scanning...");
-    // Try to load all HistorylistEntity(s) from the database to verify the schema definition.
-    let (ok_count, err_count) = HistorylistEntity::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("HistorylistEntity: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("HistorylistEntity: Scanned {count} rows(s): {err_count} unreadable");
-    } else {
-        log::info!("HistorylistEntity: Scanned {count} rows(s)");
-    }
-}
-
-async fn performance_data_scan(pool: &SqlitePool) {
-    log::info!("PerformanceData: Scanning...");
-    // Try to load all PerformanceData from the database to verify the schema definition.
-    let (ok_count, err_count) = PerformanceData::fetch_all(pool)
-        .fold((0, 0), |(ok_count, err_count), result| {
-            let counts = match result {
-                Ok(_) => (ok_count + 1, err_count),
-                Err(err) => {
-                    log::warn!("PerformanceData: Failed to read row: {err:#}");
-                    (ok_count, err_count + 1)
-                }
-            };
-            std::future::ready(counts)
-        })
-        .await;
-    let count = ok_count + err_count;
-    if err_count > 0 {
-        log::warn!("PerformanceData: Scanned {count} rows: {err_count} unreadable");
-    } else {
-        log::info!("PerformanceData: Scanned {count} rows(s)");
-    }
 }
 
 async fn find_track_file_issues(pool: &SqlitePool, library_path: PathBuf) {
