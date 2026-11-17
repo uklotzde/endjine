@@ -41,7 +41,7 @@ mod pack;
 pub use self::pack::{Pack, PackId, PackUuid};
 
 mod performance;
-pub use self::performance::{PerformanceData, PerformanceDataId};
+pub use self::performance::PerformanceData;
 
 mod playlist;
 pub use self::playlist::{

@@ -6,8 +6,6 @@ use sqlx::{FromRow, SqliteExecutor};
 
 use crate::TrackId;
 
-crate::db_id!(PerformanceDataId);
-
 #[derive(Debug, Clone, FromRow)]
 #[sqlx(rename_all = "camelCase")]
 pub struct PerformanceData {
@@ -24,22 +22,22 @@ pub struct PerformanceData {
 impl PerformanceData {
     /// Fetches all [`PerformanceData`] asynchronously.
     ///
-    /// Unfiltered and in no particular order.
+    /// Unfiltered and ordered by track ID.
     pub fn fetch_all<'a>(
         executor: impl SqliteExecutor<'a> + 'a,
     ) -> BoxStream<'a, sqlx::Result<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "PerformanceData" ORDER BY "id""#).fetch(executor)
+        sqlx::query_as(r#"SELECT * FROM "PerformanceData" ORDER BY "trackId""#).fetch(executor)
     }
 
-    /// Loads a single [`PerformanceData`] by ID.
+    /// Loads the [`PerformanceData`] of a track.
     ///
     /// Returns `Ok(None)` if the requested [`PerformanceData`] has not been found.
     pub async fn try_load(
         executor: impl SqliteExecutor<'_>,
-        id: PerformanceDataId,
+        track_id: TrackId,
     ) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as(r#"SELECT * FROM "PerformanceData" WHERE "id"=?1"#)
-            .bind(id)
+        sqlx::query_as(r#"SELECT * FROM "PerformanceData" WHERE "trackId"=?1"#)
+            .bind(track_id)
             .fetch_optional(executor)
             .await
     }
