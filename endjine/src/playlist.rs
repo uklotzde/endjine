@@ -387,16 +387,11 @@ impl PlaylistEntity {
     /// Loads all entries of a [`Playlist`].
     ///
     /// Ordered by the canonical position in the playlist.
-    pub async fn load_list(
-        executor: impl SqliteExecutor<'_>,
+    pub async fn load_list<'a>(
+        executor: impl SqliteExecutor<'a> + 'a,
         list_id: PlaylistId,
     ) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as(
-            r#"SELECT * FROM "PlaylistEntity" WHERE "listId"=?1 ORDER BY "membershipReference""#,
-        )
-        .bind(list_id)
-        .fetch_all(executor)
-        .await
+        Self::fetch_list(executor, list_id).try_collect().await
     }
 
     /// Deletes all entries of a [`Playlist`].
